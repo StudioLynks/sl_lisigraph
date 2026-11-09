@@ -1,0 +1,13 @@
+{
+  "name": "gitgraph",
+  "version": "1.0.0",
+  "description": "Graphe lisible des branches et merges d'un dépôt Git",
+  "bin": {
+    "gitgraph": "gitgraph.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "UNLICENSED",
+  "private": true
+}

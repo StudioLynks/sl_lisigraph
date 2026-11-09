@@ -1,0 +1,1554 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GitGraph</title>
+<style>
+  :root {
+    --bg: #ffffff; --bg-head: #f6f7f9; --fg: #1d2330; --muted: #6b7385; --line: #e6e8ee; --hover: #f0f3f9;
+    --b-primary: #2f6fdf; --stale: #a3a9b4;
+    --p1: #e8710a; --p2: #1e9e6a; --p3: #8b5cf6; --p4: #d6336c; --p5: #0e9fb5; --p6: #b8860b;
+    --refs-w: 260px; --graph-w: 40px; --row-h: 34px; --detail-w: 400px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #16181d; --bg-head: #1c1f26; --fg: #e6e8ee; --muted: #8b93a5; --line: #2a2e37; --hover: #20242d;
+      --b-primary: #5b93ff; --stale: #636a78;
+      --p1: #ff9d3d; --p2: #3ccf91; --p3: #a78bfa; --p4: #f06595; --p5: #22c3dc; --p6: #e0b341;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #16181d; --bg-head: #1c1f26; --fg: #e6e8ee; --muted: #8b93a5; --line: #2a2e37; --hover: #20242d;
+    --b-primary: #5b93ff; --stale: #636a78;
+    --p1: #ff9d3d; --p2: #3ccf91; --p3: #a78bfa; --p4: #f06595; --p5: #22c3dc; --p6: #e0b341;
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+
+  header { position: sticky; top: 0; z-index: 5; background: var(--bg-head); border-bottom: 1px solid var(--line); padding: 12px 16px; }
+  .title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-bottom: 10px; }
+  .title h1 { font-size: 16px; margin: 0; }
+  .title .repo { margin-left: 0; border-color: transparent; color: var(--muted); font: inherit; }
+  .title .repo:hover { border-color: var(--line); color: var(--fg); }
+
+  /* Menus de l'en-tête */
+  .menu-wrap { position: relative; }
+  .menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 20; min-width: 240px; padding: 10px; background: var(--bg-head); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, .25); }
+  .menu[hidden] { display: none; }
+  .export-menu { left: auto; right: 0; }
+  .export-menu button { display: block; width: 100%; margin: 0 0 4px; text-align: left; }
+  .export-menu p { margin: 6px 0 0; }
+  .repo-menu { width: min(520px, 90vw); }
+  .menu .label, .repo-picker .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; margin: 6px 0; }
+  .repo-list { list-style: none; margin: 0 0 8px; padding: 0; max-height: 50vh; overflow-y: auto; }
+  .repo-list li { display: flex; flex-direction: column; padding: 5px 8px; border-radius: 6px; cursor: pointer; }
+  .repo-list li:hover { background: var(--hover); }
+  .repo-list li.current { box-shadow: inset 3px 0 0 var(--b-primary); }
+  .repo-list li.missing { opacity: .45; }
+  .repo-list li span { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+  .repo-open { display: flex; gap: 6px; }
+  .repo-open input, .search input { flex: 1; min-width: 0; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); font: inherit; }
+  .repo-open button { background: none; border: 1px solid var(--line); color: var(--fg); border-radius: 6px; padding: 3px 10px; cursor: pointer; }
+  body.no-repo .title > :not(h1, .menu-wrap:first-of-type, #theme), body.no-repo .lanebar { display: none; }
+  button.browse { margin: 6px 0 0; background: none; border: 1px solid var(--line); color: var(--fg); border-radius: 6px; padding: 3px 10px; cursor: pointer; font: inherit; }
+  button.browse:disabled { opacity: .5; cursor: wait; }
+  .repo-picker { max-width: 560px; margin: 40px auto; padding: 0 16px; }
+  .repo-picker h2 { font-size: 16px; }
+
+  /* Recherche */
+  .search { display: flex; align-items: center; gap: 8px; }
+  .search input { width: 240px; }
+  .row.match { background: color-mix(in srgb, var(--p6) 14%, transparent); }
+  .row.match-current, .row.match-current:hover { background: color-mix(in srgb, var(--p6) 30%, transparent); outline: 1px solid var(--p6); outline-offset: -1px; }
+
+  /* Repères de mois */
+  .row { position: relative; }
+  .row.month-start { border-top: 1px solid color-mix(in srgb, var(--muted) 45%, transparent); }
+  .month { position: absolute; left: 10px; top: -8px; z-index: 1; padding: 0 6px; font-size: 10.5px; line-height: 15px; text-transform: capitalize; color: var(--muted); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; pointer-events: none; }
+  .row.first .month { top: 2px; }
+  .title .note { margin-left: auto; color: var(--muted); font-size: 12px; }
+  .title button { margin-left: 12px; background: none; border: 1px solid var(--line); color: var(--fg); border-radius: 6px; padding: 3px 10px; cursor: pointer; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+  .legend .group { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .legend .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; margin-right: 2px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line); cursor: pointer; white-space: nowrap; transition: opacity .12s; }
+  .chip:hover { background: var(--hover); }
+  .chip.faded { opacity: .35; }
+  .chip.current { border-color: var(--c); background: color-mix(in srgb, var(--c) 14%, transparent); }
+  .chip .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--c); }
+  .chip .meta { color: var(--muted); font-size: 12px; }
+  .chip.deleted { border-style: dashed; }
+  .more { background: none; border: 1px dashed var(--line); color: var(--muted); border-radius: 999px; padding: 3px 10px; cursor: pointer; font: inherit; }
+  .more:hover { color: var(--fg); background: var(--hover); }
+
+  .graph { position: relative; overflow-x: auto; }
+  .rows { position: relative; min-width: 900px; }
+  svg.lanes { position: absolute; top: 0; pointer-events: none; z-index: 2; }
+  .row { display: grid; grid-template-columns: var(--refs-w) var(--graph-w) minmax(200px, 1fr) 170px 120px 76px; align-items: center; height: var(--row-h); border-bottom: 1px solid color-mix(in srgb, var(--line) 50%, transparent); }
+  .row:hover { background: var(--hover); }
+  .row > div { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; padding: 0 8px; }
+  .refs { display: flex; justify-content: flex-end; gap: 4px; }
+  .msg.merge { color: var(--muted); }
+  .author { color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .avatar { flex: none; width: 20px; height: 20px; border-radius: 50%; font-size: 10px; font-weight: 600; display: grid; place-items: center; color: #fff; }
+  .date { color: var(--muted); }
+  .hash { color: var(--muted); font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+
+  .pill { display: inline-flex; align-items: center; gap: 4px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; padding: 1px 8px; border-radius: 6px; font-size: 12px; font-weight: 500;
+          background: color-mix(in srgb, var(--c) 16%, transparent); border: 1px solid color-mix(in srgb, var(--c) 60%, transparent); }
+  .pill.head { background: var(--c); color: #fff; border-color: var(--c); font-weight: 600; }
+  .pill.remote { background: transparent; border-style: dashed; color: var(--muted); }
+  .pill.deleted { background: transparent; border-style: dashed; font-style: italic; color: var(--muted); }
+  .pill.tag { --c: var(--muted); background: transparent; border-radius: 3px 10px 10px 3px; }
+  .refs .pill[data-b] { cursor: pointer; }
+  .pill .ahead { font-size: 11px; font-weight: 700; }
+  .pill svg { flex: none; }
+
+  /* Zoom */
+  .crumbs { display: flex; align-items: center; gap: 10px; margin-top: 10px; min-height: 26px; }
+  .crumbs a { color: var(--b-primary); text-decoration: none; }
+  .crumbs a:hover { text-decoration: underline; }
+  .crumbs .sep { color: var(--muted); }
+  .crumbs .right { margin-left: auto; }
+  .hint { color: var(--muted); font-size: 12px; }
+  .msg .hint { margin-left: 10px; }
+  .toggle { display: inline-flex; align-items: center; gap: 6px; margin-left: 8px; padding: 2px 10px; border: 1px solid var(--line); border-radius: 6px; cursor: pointer; }
+  .row.gap { cursor: pointer; }
+  .row.gap .msg { color: var(--muted); font-style: italic; }
+  .stub { pointer-events: stroke; }
+  .loading { margin: 24px 16px; }
+  .error { margin: 24px 16px; color: var(--p4); white-space: pre-wrap; }
+
+  /* Structure seule : commits ordinaires regroupés */
+  .row.squash { cursor: pointer; }
+  .row.squash .msg { color: var(--muted); font-style: italic; }
+
+  /* Branches présentes à l'endroit où l'on est dans le défilement */
+  .lanebar { display: grid; grid-template-columns: var(--refs-w) var(--graph-w) 1fr; align-items: center; height: 28px; margin: 10px -16px -12px; border-top: 1px solid var(--line); background: var(--bg); }
+  .lanebar svg { display: block; }
+  .lanebar .lead { padding: 0 8px; text-align: right; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+  .lanebar .names { display: flex; gap: 14px; padding: 0 8px; overflow: hidden; white-space: nowrap; }
+  .lname { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
+  .lname:hover { text-decoration: underline; }
+  .lname i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
+  .lname.deleted { font-style: italic; color: var(--muted); }
+
+  /* Détail d'un commit */
+  .row[data-id] { cursor: pointer; }
+  .row.selected, .row.selected:hover { background: color-mix(in srgb, var(--b-primary) 16%, transparent); }
+  body.detail-open .graph, body.detail-open header { margin-right: var(--detail-w); }
+  .detail { position: fixed; top: 0; right: 0; bottom: 0; width: var(--detail-w); z-index: 10; overflow-y: auto; padding: 16px 18px 24px; background: var(--bg-head); border-left: 1px solid var(--line); }
+  .detail[hidden] { display: none; }
+  .detail .close { float: right; background: none; border: 1px solid var(--line); color: var(--fg); border-radius: 6px; width: 28px; height: 28px; cursor: pointer; font-size: 16px; line-height: 1; }
+  .detail h2 { font-size: 15px; margin: 0 40px 8px 0; line-height: 1.35; }
+  .detail .body { white-space: pre-wrap; color: var(--muted); margin: 0 0 12px; font: inherit; }
+  .detail dl { display: grid; grid-template-columns: 92px 1fr; gap: 6px 10px; margin: 14px 0; }
+  .detail dt { color: var(--muted); }
+  .detail dd { margin: 0; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; min-width: 0; }
+  .detail .mono { font-family: ui-monospace, Consolas, monospace; font-size: 12px; word-break: break-all; }
+  .detail a { color: var(--b-primary); cursor: pointer; text-decoration: none; }
+  .detail a:hover { text-decoration: underline; }
+  .detail .copy { background: none; border: 1px solid var(--line); color: var(--muted); border-radius: 5px; font-size: 11px; padding: 0 6px; cursor: pointer; }
+  .detail h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 18px 0 8px; display: flex; gap: 8px; }
+  .detail h3 .stat { margin-left: auto; text-transform: none; letter-spacing: 0; }
+  .files { list-style: none; margin: 0; padding: 0; }
+  .files li { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 3px 0; border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent); font-size: 12px; }
+  .files .path { overflow-wrap: anywhere; }
+  .files .path span { color: var(--muted); }
+  .add { color: var(--p2); } .del { color: var(--p4); }
+
+  /* Modifications d'un fichier */
+  body.detail-wide { --detail-w: min(960px, 62vw); }
+  .files li[data-file] { cursor: pointer; }
+  .files li[data-file]:hover { background: var(--hover); }
+  .files .chev { display: inline-block; width: 12px; color: var(--muted); transition: transform .12s; }
+  .files li.open .chev { transform: rotate(90deg); }
+  .files .renamed { display: block; margin-left: 12px; }
+  .files li.diff { display: block; padding: 6px 0 10px; border-bottom: 0; }
+  .difftable { width: 100%; border-collapse: collapse; font: 12px/1.45 ui-monospace, Consolas, monospace; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
+  .difftable td { padding: 0 6px; vertical-align: top; }
+  .difftable .n { width: 1%; min-width: 34px; text-align: right; color: var(--muted); user-select: none; border-right: 1px solid var(--line); }
+  .difftable .code { white-space: pre-wrap; word-break: break-all; }
+  .difftable tr.add { background: color-mix(in srgb, var(--p2) 16%, transparent); }
+  .difftable tr.del { background: color-mix(in srgb, var(--p4) 16%, transparent); }
+  .difftable tr.hunk td { background: color-mix(in srgb, var(--b-primary) 10%, transparent); color: var(--muted); padding: 2px 6px; }
+
+  /* Comparaison */
+  .detail .back { display: inline-block; margin-bottom: 10px; }
+  .cmp-form { display: flex; gap: 6px; align-items: center; margin: 4px 0 12px; }
+  .cmp-form select { flex: 1; min-width: 0; padding: 4px 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); font: inherit; }
+  .cmp-form .copy { font-size: 14px; padding: 2px 8px; }
+  .detail .ok { color: var(--p2); }
+  .swatch { width: 10px; height: 10px; border-radius: 2px; align-self: center; }
+  .swatch.cmp-a { background: var(--p1); } .swatch.cmp-b { background: var(--p5); }
+  .row.cmp-a { box-shadow: inset 4px 0 0 var(--p1); }
+  .row.cmp-b { box-shadow: inset 4px 0 0 var(--p5); }
+  .cmp-list { list-style: none; margin: 0; padding: 0; }
+  .cmp-list li { display: grid; grid-template-columns: 10px auto 1fr; gap: 2px 8px; align-items: center; padding: 4px 6px; border-radius: 6px; cursor: pointer; }
+  .cmp-list li:hover { background: var(--hover); }
+  .cmp-list .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
+  .cmp-list .m { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cmp-list .m.merge { color: var(--muted); }
+  .cmp-list .hint { grid-column: 3; }
+
+  /* Mise en évidence d'une branche */
+  .e, .n, .row .refs, .row .msg { transition: opacity .12s; }
+  .focus .e:not(.on), .focus .n:not(.on) { opacity: .15; }
+  .focus .row:not(.on) .msg, .focus .row:not(.on) .refs { opacity: .35; }
+</style>
+</head>
+<body>
+<header>
+  <div class="title">
+    <h1>GitGraph</h1>
+    <span class="menu-wrap"><button class="repo" id="repo" title="Changer de dépôt"></button><div class="menu repo-menu" id="repo-menu" hidden></div></span>
+    <span class="search"><input id="search" type="search" placeholder="Rechercher…  ( / )" autocomplete="off" spellcheck="false"><span class="hint" id="search-count"></span></span>
+    <span class="note" id="note"></span>
+    <label class="toggle" title="Range les commits issus d'un git pull dans la colonne de leur branche, au lieu de les dessiner en parallèle"><input type="checkbox" id="flatten"> Aplatir les git pull</label>
+    <label class="toggle" title="Regroupe les commits ordinaires pour ne garder que les créations de branches, les merges et les tags"><input type="checkbox" id="structure"> Structure seule</label>
+    <label class="toggle" title="Met en évidence la branche du commit survolé"><input type="checkbox" id="hover-hl"> Surbrillance au survol</label>
+    <button id="compare-btn" title="Comparer deux branches">Comparer</button>
+    <span class="menu-wrap"><button id="export-btn" title="Enregistrer la vue actuelle en image">Exporter</button><div class="menu export-menu" id="export-menu" hidden>
+      <button data-export="png">Image PNG</button>
+      <button data-export="svg">Image SVG <span class="hint">vectorielle</span></button>
+      <p class="hint">La vue actuelle : zoom et options compris.</p>
+      <p class="error" id="export-error" hidden></p>
+    </div></span>
+    <button id="theme">Thème</button>
+  </div>
+  <div class="legend" id="legend"></div>
+  <div class="crumbs" id="crumbs"></div>
+  <div class="lanebar"><div class="lead">Colonnes</div><svg id="lanebar-svg" height="28"></svg><div class="names" id="lanebar-names"></div></div>
+</header>
+<div class="graph"><div class="rows" id="rows"><p class="hint loading">Chargement du dépôt…</p></div></div>
+<aside class="detail" id="detail" hidden></aside>
+
+<script type="module">
+// ---------------------------------------------------------------------------
+// Données de démonstration, utilisées quand la page est ouverte sans gitgraph.js
+// [id, date, auteur, message, parents], du plus récent au plus ancien
+// ---------------------------------------------------------------------------
+const DEMO_RAW = [
+  ['v3',  '2026-11-06T16:20', 'Thomas Leroy', "Gestion des erreurs de l'API", ['v2']],
+  ['n3',  '2026-11-04T10:05', 'Julie Martin', 'Préférences de notification par utilisateur', ['n2']],
+  ['d8',  '2026-10-28T14:30', 'Marc Dubois',  "Corrige les tests d'intégration", ['d7']],
+  ['n2',  '2026-10-20T09:40', 'Julie Martin', 'Notifications par e-mail', ['n1']],
+  ['d7',  '2026-10-12T11:15', 'Marc Dubois',  'Passage à Node 22', ['d6']],
+  ['v2',  '2026-10-05T17:00', 'Thomas Leroy', 'Migration des endpoints vers la v2', ['v1']],
+  ['n1',  '2026-10-01T15:25', 'Julie Martin', 'Service de notifications', ['d6']],
+  ['v1',  '2026-09-15T10:00', 'Thomas Leroy', 'Nouveau client API', ['d6']],
+  ['d6',  '2026-07-01T09:10', 'Thomas Leroy', 'Corrige la connexion sous Safari', ['dm3']],
+  ['dm3', '2026-06-10T16:45', 'Marc Dubois',  "Merge branch 'feature/export' into develop", ['d5', 'e2']],
+  ['d5',  '2026-06-03T13:20', 'Marc Dubois',  'Optimise les requêtes SQL', ['d4']],
+  ['e2',  '2026-05-20T11:30', 'Julie Martin', 'Export PDF', ['e1']],
+  ['e1',  '2026-05-06T14:00', 'Julie Martin', 'Export CSV des commandes', ['d4']],
+  ['d4',  '2026-04-14T10:50', 'Julie Martin', 'Corrige le fuseau horaire des dates', ['dm2']],
+  ['m1',  '2026-03-10T18:00', 'Marc Dubois',  "Merge branch 'develop'", ['c2', 'dm2']],
+  ['dm2', '2026-03-02T17:30', 'Marc Dubois',  "Merge branch 'feature/dashboard' into develop", ['d3', 'b3']],
+  ['b3',  '2026-02-25T15:10', 'Thomas Leroy', 'Filtres par période', ['bm']],
+  ['bm',  '2026-02-12T09:30', 'Thomas Leroy', "Merge branch 'develop' into feature/dashboard", ['b2', 'd3']],
+  ['b2',  '2026-02-10T16:00', 'Thomas Leroy', 'Graphiques des ventes', ['b1']],
+  ['d3',  '2026-02-02T11:00', 'Marc Dubois',  'Ajoute les logs serveur', ['d2']],
+  ['b1',  '2026-01-20T10:20', 'Thomas Leroy', 'Squelette du tableau de bord', ['d2']],
+  ['d2',  '2026-01-08T14:45', 'Marc Dubois',  'Corrige le build de production', ['dm1']],
+  ['dm1', '2025-12-15T17:00', 'Marc Dubois',  "Merge branch 'feature/auth' into develop", ['d1b', 'a3']],
+  ['a3',  '2025-12-10T12:30', 'Julie Martin', 'Gestion des tokens JWT', ['a2']],
+  ['d1b', '2025-12-04T09:15', 'Marc Dubois',  'Mise à jour des dépendances', ['d1']],
+  ['a2',  '2025-12-02T16:40', 'Julie Martin', 'Formulaire de connexion', ['a1']],
+  ['a1',  '2025-11-20T10:00', 'Julie Martin', 'Modèle User', ['d1']],
+  ['d1',  '2025-11-12T15:30', 'Marc Dubois',  'Configuration ESLint et Prettier', ['c2']],
+  ['c2',  '2025-11-05T11:00', 'Marc Dubois',  'Mise en place du projet', ['c1']],
+  ['c1',  '2025-11-03T09:00', 'Marc Dubois',  'Initial commit', []],
+];
+const DEMO = {
+  demo: true,
+  repo: 'mon-projet',
+  now: '2026-11-09T12:00:00',
+  commits: DEMO_RAW.map(([id, date, author, msg, parents]) => ({ id, hash: fakeHash(id), date, author, msg, parents })),
+  refs: {
+    head: 'develop',
+    headCommit: 'd8',
+    remoteName: 'origin',
+    local:  { 'develop': 'd8', 'main': 'm1', 'feature/notifications': 'n3', 'feature/api-v2': 'v3' },
+    remote: { 'develop': 'd8', 'main': 'm1', 'feature/notifications': 'n2', 'feature/api-v2': 'v3' },
+    tags:   { 'v1.0': 'm1' },
+  },
+};
+
+function fakeHash(s) {
+  let h = 2166136261;
+  for (const ch of s + '#') { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); }
+  return (h >>> 0).toString(16).padStart(8, '0').slice(0, 7);
+}
+
+// Données réelles servies par gitgraph.js, sinon démo
+async function loadData() {
+  try {
+    const res = await fetch('api/graph');
+    if (res.ok) return await res.json();
+  } catch {}
+  return DEMO;
+}
+// Réponse JSON du serveur, avec un message clair si elle est vide ou illisible (serveur d'une version précédente)
+async function readJson(res) {
+  const text = await res.text();
+  try { return JSON.parse(text); } catch {
+    return { error: res.ok && text ? 'Réponse illisible du serveur.' : 'Le serveur ne connaît pas cette fonction : arrêtez gitgraph (Ctrl+C) et relancez-le.' };
+  }
+}
+
+// Changement de dépôt (menu de l'en-tête, ou écran de choix si aucun dépôt n'est ouvert)
+const escText = s => String(s).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+
+async function fillRepoMenu(container) {
+  container.innerHTML = '<p class="hint">Chargement…</p>';
+  let info;
+  try { info = await fetch('api/repos').then(r => r.json()); } catch { info = null; }
+  if (!info || info.error) {
+    container.innerHTML = '<p class="hint">Indisponible en démo : lancez la commande gitgraph.</p>';
+    return;
+  }
+  const item = r => `<li data-repo="${escText(r.path)}" class="${r.path === info.current ? 'current' : ''}${r.exists ? '' : ' missing'}" title="${r.exists ? '' : 'Dossier introuvable'}"><b>${escText(r.name)}</b><span>${escText(r.path)}</span></li>`;
+  container.innerHTML = `
+    <div class="label">Dépôts récents</div>
+    ${info.recent.length ? `<ul class="repo-list">${info.recent.map(item).join('')}</ul>` : '<p class="hint">Aucun pour l’instant.</p>'}
+    <div class="label">Ouvrir un autre dépôt</div>
+    <form class="repo-open"><input name="path" placeholder="${String.raw`C:\chemin\vers\le\projet`}" autocomplete="off" spellcheck="false"><button>Ouvrir</button></form>
+    <button class="browse" type="button">Parcourir…</button>
+    <p class="hint browse-hint" hidden>Une fenêtre de sélection s'est ouverte (elle peut être derrière le navigateur).</p>
+    <p class="error" hidden></p>`;
+  const error = container.querySelector('.error');
+  const open = async dir => {
+    if (!dir) return;
+    error.hidden = true;
+    let res;
+    try {
+      res = await fetch('api/open', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-GitGraph': '1' }, body: JSON.stringify({ path: dir }) }).then(readJson);
+    } catch (err) { res = { error: err.message }; }
+    if (res.error) { error.textContent = res.error; error.hidden = false; return; }
+    location.href = location.pathname; // sans ?main=, propre à l'ancien dépôt
+  };
+  container.querySelectorAll('[data-repo]').forEach(li => li.addEventListener('click', () => open(li.dataset.repo)));
+  // Fenêtre native de choix de dossier, ouverte par le serveur
+  const browse = container.querySelector('.browse'), hint = container.querySelector('.browse-hint');
+  browse.addEventListener('click', async () => {
+    error.hidden = true;
+    browse.disabled = true;
+    hint.hidden = false;
+    let res;
+    try {
+      res = await fetch('api/browse', { method: 'POST', headers: { 'X-GitGraph': '1' } }).then(readJson);
+    } catch (err) { res = { error: err.message }; }
+    browse.disabled = false;
+    hint.hidden = true;
+    if (res.error) { error.textContent = res.error; error.hidden = false; return; }
+    if (res.path) {
+      container.querySelector('form').path.value = res.path;
+      open(res.path);
+    }
+  });
+  container.querySelector('form').addEventListener('submit', e => { e.preventDefault(); open(e.target.path.value.trim().replace(/^"|"$/g, '')); });
+}
+
+const DATA = await loadData();
+if (DATA.needRepo) {
+  // Aucun dépôt : on propose d'en choisir un, et on s'arrête là
+  document.getElementById('repo').textContent = 'Choisir un dépôt ▾';
+  document.body.classList.add('no-repo');
+  document.getElementById('rows').innerHTML = '<div class="repo-picker"><h2>Quel dépôt afficher ?</h2><div id="picker"></div></div>';
+  await fillRepoMenu(document.getElementById('picker'));
+  await new Promise(() => {});
+}
+if (DATA.error) {
+  document.getElementById('rows').innerHTML = `<p class="error">${DATA.error.replace(/</g, '&lt;')}</p>`;
+  throw new Error(DATA.error);
+}
+const REFS = DATA.refs;
+const NOW = new Date(DATA.now);
+document.getElementById('repo').textContent = DATA.repo + (DATA.demo ? '' : ' ▾');
+document.getElementById('note').textContent = DATA.demo ? 'Démo · données fictives' : `${DATA.commits.length} commits${DATA.truncated ? ' (les plus récents)' : ''} · v${DATA.version}`;
+document.title = DATA.demo ? 'GitGraph' : `${DATA.repo} · GitGraph`;
+
+// ---------------------------------------------------------------------------
+// Réglages
+// ---------------------------------------------------------------------------
+const LONG_LIVED = ['main', 'master', 'develop', 'dev', 'staging'];
+const STALE_DAYS = 90;
+const ROW_H = 34, COL_W = 24, PAD = 16, R = 10, REFS_W = 260;
+const PALETTE = ['--p1', '--p2', '--p3', '--p4', '--p5', '--p6'];
+
+// ---------------------------------------------------------------------------
+// Modèle
+// ---------------------------------------------------------------------------
+// L'ordre est celui de `git log --date-order` : un commit apparaît toujours avant ses parents
+const commits = DATA.commits.map(c => ({ ...c, date: new Date(c.date) }));
+const byId = new Map(commits.map(c => [c.id, c]));
+commits.forEach((c, i) => { c.row = i; });
+
+function ancestors(id) {
+  const seen = new Set(), stack = [id];
+  while (stack.length) {
+    const x = stack.pop();
+    if (seen.has(x)) continue;
+    seen.add(x);
+    stack.push(...byId.get(x).parents);
+  }
+  return seen;
+}
+function countMissing(fromId, inId) { // commits atteignables depuis fromId mais pas depuis inId
+  const inSet = ancestors(inId);
+  return [...ancestors(fromId)].filter(x => !inSet.has(x)).length;
+}
+function firstParentMerges(id) {
+  let n = 0;
+  while (id) { const c = byId.get(id); if (c.parents.length > 1) n++; id = c.parents[0]; }
+  return n;
+}
+function mergeSourceName(msg) {
+  const m = msg.match(/Merge branch '([^']+)'/)
+         || msg.match(/Merge remote-tracking branch '(?:origin\/)?([^']+)'/)
+         || msg.match(/Merge pull request #\d+ from [^/\s]+\/(\S+)/)
+         || msg.match(/Merged in (\S+)/)
+         || msg.match(/Merged (PR \d+)/);
+  return m ? m[1] : 'branche inconnue';
+}
+
+// Branches existantes : local + distante regroupées sous un même nom
+const names = new Set([...Object.keys(REFS.local), ...Object.keys(REFS.remote)]);
+const existing = [...names].map(name => {
+  const local = REFS.local[name], remote = REFS.remote[name];
+  return { name, local, remote, tip: local || remote };
+});
+
+// Branche principale : forcée via ?main=xxx, sinon la branche longue qui reçoit le plus de merges
+// (on ne regarde que les branches longues : une feature hérite des merges de la branche dont elle part)
+const override = new URLSearchParams(location.search).get('main');
+const longLived = existing.filter(b => LONG_LIVED.includes(b.name));
+const primaryInfo = existing.find(b => b.name === override)
+  || [...(longLived.length ? longLived : existing)].sort((a, b) => firstParentMerges(b.tip) - firstParentMerges(a.tip) || byId.get(b.tip).date - byId.get(a.tip).date)[0];
+
+const ordered = [
+  primaryInfo,
+  ...existing.filter(b => b !== primaryInfo && LONG_LIVED.includes(b.name)),
+  ...existing.filter(b => b !== primaryInfo && !LONG_LIVED.includes(b.name))
+             .sort((a, b) => byId.get(b.tip).date - byId.get(a.tip).date),
+];
+
+// Attribution des commits : on suit le premier parent depuis chaque tête, par ordre de priorité
+const branches = [];
+function addBranch(props, startId) {
+  const b = { id: branches.length, commits: [], ...props };
+  branches.push(b);
+  let id = startId;
+  while (id) {
+    const c = byId.get(id);
+    if (c.branch) { b.forkFrom = c; break; }
+    c.branch = b;
+    b.commits.push(c);
+    id = c.parents[0];
+  }
+  // Branche sans commit propre (ex. créée sur un commit qui appartient déjà à une autre) : simple étiquette
+  b.empty = b.commits.length === 0;
+  return b;
+}
+for (const info of ordered) {
+  addBranch({ ...info, primary: info === primaryInfo, persistent: info === primaryInfo || LONG_LIVED.includes(info.name) }, info.tip);
+}
+// Branches supprimées : retrouvées via les commits de merge
+for (const c of commits) {
+  for (const pid of c.parents.slice(1)) {
+    if (byId.get(pid).branch) continue;
+    const into = c.branch.pullOf || c.branch;
+    const name = mergeSourceName(c.msg);
+    // `git pull` sans rebase : la branche fusionne sa propre version distante, ce n'est pas une vraie branche
+    if (name === into.name) addBranch({ name, deleted: true, pullOf: into, mergedInto: c.branch, tip: pid }, pid);
+    else addBranch({ name, deleted: true, mergedInto: c.branch, tip: pid }, pid);
+  }
+}
+// Commits restants (atteignables seulement par un tag, par exemple)
+for (const c of commits) {
+  if (c.branch) continue;
+  const tag = Object.keys(REFS.tags).find(t => REFS.tags[t] === c.id);
+  addBranch({ name: tag || '(sans branche)', deleted: true, orphan: true, tip: c.id }, c.id);
+}
+
+// État des branches
+const primary = branches[0];
+let paletteIdx = 0;
+for (const b of branches) {
+  const tipDate = byId.get(b.tip).date;
+  b.ageDays = (NOW - tipDate) / 864e5;
+  b.stale = !b.deleted && !b.primary && b.ageDays > STALE_DAYS;
+  if (!b.deleted && !b.primary) b.behind = countMissing(primary.tip, b.tip);
+  if (b.local && b.remote && b.local !== b.remote) {
+    b.ahead = countMissing(b.local, b.remote);
+    b.remoteAhead = countMissing(b.remote, b.local);
+  }
+  b.color = b.pullOf ? b.pullOf.color : b.primary ? '--b-primary' : b.stale ? '--stale' : PALETTE[paletteIdx++ % PALETTE.length];
+}
+
+// Relations entre branches (fork / merge), utilisées par le zoom.
+// Un commit « lié » a un enfant sur une autre branche : point de départ d'une branche ou source d'un merge.
+// « linkedFlat » : même chose quand les divergences (git pull) sont confondues avec leur branche.
+const related = new Map(branches.map(b => [b, new Set()]));
+const rootOf = b => b.pullOf || b;
+for (const c of commits) {
+  for (const pid of c.parents) {
+    const p = byId.get(pid);
+    if (p.branch !== c.branch) { related.get(c.branch).add(p.branch); related.get(p.branch).add(c.branch); p.linked = true; }
+    if (rootOf(p.branch) !== rootOf(c.branch)) p.linkedFlat = true;
+  }
+  // Merge créé par un `git pull` : la branche réunie avec sa propre version distante
+  c.pullMerge = c.parents.slice(1).some(pid => byId.get(pid).branch.pullOf === rootOf(c.branch));
+}
+const refIds = new Set([...Object.values(REFS.local), ...Object.values(REFS.remote), ...Object.values(REFS.tags)]);
+
+// ---------------------------------------------------------------------------
+// Vue : quels commits afficher (tout le graphe, ou une branche et ses voisines)
+// ---------------------------------------------------------------------------
+let zoom = null;      // branche zoomée
+let zoomGroup = [];   // toutes les branches zoomées (plusieurs branches supprimées peuvent porter le même nom)
+let showFull = false; // afficher les branches longues en entier pendant un zoom
+let structureOnly = false;     // regrouper les commits ordinaires
+let flattenPulls = true;       // dessiner les divergences (git pull) dans la colonne de leur branche
+const expandedRuns = new Set(); // séquences dépliées à la main (id de leur commit le plus récent)
+
+function buildView() {
+  const view = buildBaseView();
+  if (structureOnly) squashRuns(view);
+  return view;
+}
+
+// Un repère reste toujours visible : merge, début ou fin de branche, lien avec une autre branche, étiquette
+// Avec les git pull aplatis, une synchronisation n'est pas un repère et une divergence fait partie de sa branche.
+function isLandmark(c) {
+  const lane = flattenPulls ? rootOf(c.branch) : c.branch;
+  return (c.parents.length > 1 && !(flattenPulls && c.pullMerge))
+      || (flattenPulls ? c.linkedFlat : c.linked)
+      || refIds.has(c.id) || c.id === REFS.headCommit
+      || lane.commits[0] === c || lane.commits.at(-1) === c;
+}
+
+// Divergence dessinée dans la colonne de sa branche
+const isFlat = (b, view) => flattenPulls && b.pullOf && view.branches.has(b.pullOf) && !b.pullOf.empty;
+
+// Mode « structure seule » : au moins deux commits ordinaires d'affilée dans une colonne deviennent une seule ligne
+function squashRuns(view) {
+  const lanes = new Map();
+  for (const c of view.list) {
+    const owner = isFlat(c.branch, view) ? c.branch.pullOf : c.branch;
+    (lanes.get(owner) || lanes.set(owner, []).get(owner)).push(c);
+  }
+  const replaced = new Map();
+  for (const [b, seq] of lanes) {
+    let i = 0;
+    while (i < seq.length) {
+      if (seq[i].gap || isLandmark(seq[i])) { i++; continue; }
+      let j = i;
+      while (j < seq.length && !seq[j].gap && !isLandmark(seq[j])) j++;
+      const run = seq.slice(i, j), next = seq[j];
+      if (run.length >= 2 && !expandedRuns.has(run[0].id)) {
+        // Le regroupement se rattache au commit suivant dans sa colonne
+        const parents = flattenPulls && next && !next.gap ? [next.id] : run.at(-1).parents.slice(0, 1);
+        const node = { id: 'sq-' + run[0].id, squash: true, branch: b, hidden: run, gRow: run[0].gRow, parents };
+        for (const c of run) replaced.set(c.id, node);
+      }
+      i = j;
+    }
+  }
+  if (!replaced.size) return;
+
+  const nodes = new Set(replaced.values());
+  view.list = view.list.filter(c => c.gap || !replaced.has(c.id)).concat([...nodes]);
+  view.list.sort(byViewOrder);
+  // Les liens vers un commit regroupé pointent vers le regroupement
+  for (const [id, node] of replaced) view.redirect.set(id, node);
+  for (const c of view.list) if (c.gap) c.parents = c.parents.map(p => replaced.get(p.id) || p);
+}
+
+const byViewOrder = (a, b) => (a.gap ? a.key : a.gRow) - (b.gap ? b.key : b.gRow) || a.branch.id - b.branch.id;
+
+function buildBaseView() {
+  if (!zoom) return { list: commits.slice(), redirect: new Map(), branches: new Set(branches), trimmed: [] };
+
+  // Zoom sur la branche principale : toutes les branches y sont liées, on ne garde que les branches longues
+  const vis = new Set(zoomGroup);
+  for (const z of zoomGroup) for (const r of related.get(z)) if (!zoom.primary || r.persistent) vis.add(r);
+
+  // Les branches longues voisines sont coupées à la période de vie des autres branches visibles
+  const trimmable = [...vis].filter(b => !zoomGroup.includes(b) && b.persistent);
+  const rest = [...vis].filter(b => !trimmable.includes(b));
+  const lo = Math.min(...rest.map(b => b.gTop)), hi = Math.max(...rest.map(b => b.gBottom));
+  const trimmed = trimmable.filter(b => b.commits.some(c => c.gRow < lo || c.gRow > hi));
+
+  // Divergences (git pull) des branches visibles, si elles tombent dans la période affichée
+  for (const b of branches) {
+    if (!b.pullOf || !vis.has(b.pullOf) || vis.has(b)) continue;
+    if (!trimmed.includes(b.pullOf) || showFull || (b.gTop >= lo && b.gBottom <= hi)) vis.add(b);
+  }
+
+  const list = [], redirect = new Map();
+  for (const b of vis) {
+    if (!trimmed.includes(b) || showFull) { list.push(...b.commits); continue; }
+    const above = b.commits.filter(c => c.gRow < lo);
+    const inWin = b.commits.filter(c => c.gRow >= lo && c.gRow <= hi);
+    const below = b.commits.filter(c => c.gRow > hi);
+    list.push(...inWin);
+    if (above.length) list.push({ id: 'gap-top-' + b.id, gap: 'top', branch: b, hidden: above, key: lo - 0.5, parents: inWin.length ? [inWin[0]] : [] });
+    if (below.length) {
+      const g = { id: 'gap-bot-' + b.id, gap: 'bottom', branch: b, hidden: below, key: hi + 0.5, parents: [] };
+      list.push(g);
+      if (inWin.length) redirect.set(below[0].id, g);
+    }
+  }
+  list.sort(byViewOrder);
+  return { list, redirect, branches: vis, trimmed };
+}
+
+// Arêtes de la vue. Les liens vers une branche masquée deviennent un petit trait en pointillés.
+function buildEdges(view) {
+  const inView = new Map(view.list.filter(c => !c.gap).map(c => [c.id, c]));
+  const edges = [], seen = new Set();
+  const stub = (c, branch, dir) => {
+    const k = `${c.id}|${dir}|${branch.id}`;
+    if (!seen.has(k)) { seen.add(k); edges.push({ kind: 'stub', a: c, hidden: branch, dir }); }
+  };
+  for (const c of view.list) {
+    const parents = c.gap ? c.parents : c.parents.map(pid => inView.get(pid) || view.redirect.get(pid) || byId.get(pid));
+    parents.forEach((p, k) => {
+      if (!p.gap && !inView.has(p.id)) return stub(c, p.branch, 'in');
+      if (k === 0 && p.branch === c.branch) edges.push({ kind: 'line', a: c, b: p, lane: c.branch, dashed: !!(c.gap || p.gap) });
+      else if (k === 0) edges.push({ kind: 'fork', a: c, b: p, lane: c.branch, sync: !!c.branch.pullOf });
+      else {
+        // Merge du tronc vers une feature (mise à jour) : affiché en discret, tracé dans la colonne de la feature
+        const sync = (p.branch.id < c.branch.id && !c.branch.persistent) || !!p.branch.pullOf;
+        const lane = p.branch.id < c.branch.id ? c.branch : p.branch;
+        edges.push({ kind: 'merge', a: c, b: p, lane, sync });
+      }
+    });
+  }
+  // Branches masquées qui partent d'un commit visible, ou qui y reçoivent un merge
+  for (const h of commits) {
+    if (view.branches.has(h.branch)) continue;
+    for (const pid of h.parents) { const p = inView.get(pid); if (p) stub(p, h.branch, 'out'); }
+  }
+  return edges;
+}
+
+// Lignes et colonnes : colonnes fixes pour les branches longues, réutilisées pour les autres
+function layout(view, edges) {
+  view.list.forEach((c, i) => { c.row = i; });
+  const all = branches.filter(b => view.branches.has(b) && !b.empty);
+  for (const b of all) { b.top = Infinity; b.bottom = -Infinity; b.col = undefined; }
+  // Les divergences aplaties n'ont pas de colonne propre : elles prennent celle de leur branche
+  const flat = all.filter(b => isFlat(b, view));
+  const bs = all.filter(b => !flat.includes(b));
+  for (const c of view.list) { c.branch.top = Math.min(c.branch.top, c.row); c.branch.bottom = Math.max(c.branch.bottom, c.row); }
+  for (const e of edges) {
+    if (!e.lane) continue;
+    e.lane.top = Math.min(e.lane.top, e.a.row);
+    e.lane.bottom = Math.max(e.lane.bottom, e.b.row);
+  }
+  const cols = [];
+  bs.filter(b => b.persistent).forEach((b, i) => { b.col = i; cols[i] = [b]; });
+  const firstFree = cols.length;
+  bs.filter(b => !b.persistent).sort((a, b) => a.top - b.top || a.id - b.id).forEach(b => {
+    let c = firstFree;
+    while (cols[c] && cols[c].some(o => b.top <= o.bottom && o.top <= b.bottom)) c++;
+    (cols[c] ||= []).push(b);
+    b.col = c;
+  });
+  for (const b of flat) b.col = b.pullOf.col;
+  return Math.max(cols.length, 1);
+}
+
+// Mise en page globale, conservée comme référence pour les périodes de vie des branches
+{
+  const view = buildBaseView();
+  layout(view, buildEdges(view));
+  commits.forEach(c => { c.gRow = c.row; });
+  branches.forEach(b => { b.gTop = b.top; b.gBottom = b.bottom; });
+}
+
+// ---------------------------------------------------------------------------
+// Rendu
+// ---------------------------------------------------------------------------
+const X = c => PAD + c.branch.col * COL_W;
+const Y = c => c.row * ROW_H + ROW_H / 2;
+
+// Trait vertical dans la colonne xv, puis virage arrondi vers xEnd
+function elbow(xv, y0, y1, xEnd) {
+  const s = Math.sign(xEnd - xv), r = Math.min(R, Math.abs(xEnd - xv)), dy = Math.sign(y1 - y0);
+  return `M${xv} ${y0}V${y1 - dy * r}Q${xv} ${y1} ${xv + s * r} ${y1}H${xEnd}`;
+}
+
+function edgePath(e) {
+  const { a, b } = e;
+  if (e.kind === 'line') return `M${X(a)} ${Y(a)}V${Y(b)}`;
+  if (e.kind === 'fork') return elbow(X(a), Y(a), Y(b), X(b));
+  return e.lane === b.branch ? elbow(X(b), Y(b), Y(a), X(a)) : elbow(X(a), Y(a), Y(b), X(b));
+}
+
+function edgeSvg(e) {
+  if (e.kind === 'stub') {
+    const x = X(e.a), y = Y(e.a), dx = COL_W * 0.7, dy = (e.dir === 'in' ? 1 : -1) * ROW_H * 0.6;
+    const label = `${e.dir === 'in' ? 'Merge depuis' : 'Lien vers'} ${e.hidden.name} (masquée)`;
+    return `<path class="e stub ${cls(e.a.branch)}" d="M${x} ${y}Q${x + dx} ${y} ${x + dx} ${y + dy}" fill="none" stroke="var(${e.hidden.color})" stroke-width="1.5" stroke-dasharray="2 3"><title>${esc(label)}</title></path>`;
+  }
+  const style = e.sync ? 'stroke-width:1.5;stroke-dasharray:3 4'
+              : e.dashed ? 'stroke-width:2.5;stroke-dasharray:2 5'
+              : 'stroke-width:2.5';
+  const owners = e.kind === 'merge' ? [e.a.branch, e.b.branch] : [e.lane];
+  return `<path class="e ${cls(...owners)}" d="${edgePath(e)}" fill="none" stroke="var(${e.lane.color})" style="${style}" stroke-linecap="round"/>`;
+}
+
+function nodeSvg(c) {
+  if (c.gap) return '';
+  const color = `var(${c.branch.color})`;
+  if (c.squash) {
+    return `<g class="n ${cls(c.branch)}"><rect x="${X(c) - 4}" y="${Y(c) - 8}" width="8" height="16" rx="4" fill="var(--bg)" stroke="${color}" stroke-width="2" stroke-dasharray="3 2"/></g>`;
+  }
+  const isHeadTip = REFS.headCommit === c.id;
+  const halo = isHeadTip ? `<circle cx="${X(c)}" cy="${Y(c)}" r="10" fill="${color}" opacity=".22"/>` : '';
+  const dot = c.pullMerge
+    ? `<circle cx="${X(c)}" cy="${Y(c)}" r="3.5" fill="var(--bg)" stroke="${color}" stroke-width="2" opacity=".7"/>`
+    : c.parents.length > 1
+    ? `<circle cx="${X(c)}" cy="${Y(c)}" r="5.5" fill="var(--bg)" stroke="${color}" stroke-width="2.5"/>`
+    : `<circle cx="${X(c)}" cy="${Y(c)}" r="5" fill="${color}" stroke="var(--bg)" stroke-width="2"/>`;
+  return `<g class="n ${cls(c.branch)}">${halo}${dot}</g>`;
+}
+
+const esc = s => s.replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+const cls = (...bs) => [...new Set(bs.flatMap(b => b.pullOf ? [b, b.pullOf] : [b]))].map(b => 'b' + b.id).join(' ');
+
+function relDate(d) {
+  const days = Math.floor((NOW - d) / 864e5);
+  if (days < 1) return "aujourd'hui";
+  if (days < 2) return 'hier';
+  if (days < 31) return `il y a ${days} j`;
+  const months = Math.floor(days / 30.4);
+  if (months < 12) return `il y a ${months} mois`;
+  const years = Math.floor(months / 12);
+  return `il y a ${years} an${years > 1 ? 's' : ''}`;
+}
+function staleText(b) {
+  return `inactive depuis ${relDate(byId.get(b.tip).date).replace('il y a ', '')} · ${b.behind} commit${b.behind > 1 ? 's' : ''} de retard sur ${primary.name}`;
+}
+
+const ICON_CLOUD = '<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-label="synchronisée avec origin"><path d="M4.5 13A3.5 3.5 0 0 1 4 6.03 4.5 4.5 0 0 1 12.7 7 3 3 0 0 1 12 13z"/></svg>';
+const ICON_TAG = '<svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor"><path d="M1 2a1 1 0 0 1 1-1h5.6a1 1 0 0 1 .7.3l6.4 6.4a1 1 0 0 1 0 1.4l-5.6 5.6a1 1 0 0 1-1.4 0L1.3 8.3A1 1 0 0 1 1 7.6zm3.5 3.5a1 1 0 1 0 0-2 1 1 0 0 0 0 2"/></svg>';
+
+// Étiquettes des commits représentés par une ligne (un commit, ou tous ceux d'un bloc masqué)
+function refsData(ids, viewBranches) {
+  const out = [];
+  for (const b of branches) {
+    if (!viewBranches.has(b) && !b.empty) continue;
+    if (b.deleted) {
+      if (ids.has(b.tip) && !b.pullOf) out.push({ kind: 'deleted', b, text: b.name, title: b.mergedInto ? `Branche supprimée, mergée dans ${b.mergedInto.name}` : 'Commits hors de toute branche' });
+      continue;
+    }
+    const head = REFS.head === b.name;
+    if (ids.has(b.local)) {
+      const synced = b.remote === b.local;
+      const title = [head ? 'Branche courante (HEAD)' : '', synced ? `à jour avec ${REFS.remoteName}` : '', b.ahead ? `${b.ahead} commit(s) non poussé(s)` : '', b.stale ? staleText(b) : ''].filter(Boolean).join(' · ');
+      out.push({ kind: 'local', b, text: b.name, title, head, synced, ahead: b.ahead });
+    }
+    if (ids.has(b.remote) && b.remote !== b.local) {
+      out.push({ kind: 'remote', b, text: `${REFS.remoteName}/${b.name}`, title: 'Position sur le serveur' });
+    }
+  }
+  for (const [tag, id] of Object.entries(REFS.tags)) if (ids.has(id)) out.push({ kind: 'tag', text: tag, title: 'Tag' });
+  return out;
+}
+
+function refsHtml(ids, viewBranches) {
+  return refsData(ids, viewBranches).map(r => {
+    if (r.kind === 'tag') return `<span class="pill tag">${ICON_TAG}${esc(r.text)}</span>`;
+    const kindCls = r.kind === 'local' ? (r.head ? ' head' : '') : ` ${r.kind}`;
+    const extra = r.kind === 'local' ? `${r.synced ? ICON_CLOUD : ''}${r.ahead ? `<span class="ahead">↑${r.ahead}</span>` : ''}` : '';
+    return `<span class="pill${kindCls}" data-b="${r.b.id}" style="--c:var(${r.b.color})" title="${esc(r.title)}">${esc(r.text)}${extra}</span>`;
+  }).join('');
+}
+
+function avatarColor(name) {
+  let h = 0;
+  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) % 360;
+  return `hsl(${h} 45% 48%)`;
+}
+const initials = n => n.split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
+
+function rowHtml(c, view, stubs, month = '', first = false) {
+  const mc = (month ? ' month-start' : '') + (first ? ' first' : '');
+  const ml = month ? `<span class="month">${month}</span>` : '';
+  if (c.gap) {
+    const n = c.hidden.length;
+    const when = c.gap === 'top' ? 'plus récent' : 'plus ancien';
+    return `
+    <div class="row gap${mc} ${cls(c.branch)}" data-b="${(c.branch.pullOf || c.branch).id}" title="Cliquer pour afficher ${esc(c.branch.name)} en entier">${ml}
+      <div class="refs">${refsHtml(new Set(c.hidden.map(h => h.id)), view.branches)}</div>
+      <div></div>
+      <div class="msg">··· ${n} commit${n > 1 ? 's' : ''} ${when}${n > 1 ? 's' : ''} de ${esc(c.branch.name)}</div>
+      <div></div><div></div><div></div>
+    </div>`;
+  }
+  if (c.squash) {
+    const n = c.hidden.length, newest = c.hidden[0], oldest = c.hidden.at(-1);
+    const authors = [...new Set(c.hidden.map(h => h.author))];
+    const who = authors.length > 2 ? `${authors.slice(0, 2).join(', ')} +${authors.length - 2}` : authors.join(', ');
+    const range = `du ${oldest.date.toLocaleDateString('fr-FR')} au ${newest.date.toLocaleDateString('fr-FR')}`;
+    return `
+    <div class="row squash${mc} ${cls(c.branch)}" data-b="${(c.branch.pullOf || c.branch).id}" data-run="${newest.id}" title="Cliquer pour déplier">${ml}
+      <div class="refs"></div>
+      <div></div>
+      <div class="msg">··· ${n} commits sur ${esc((c.branch.pullOf || c.branch).name)}</div>
+      <div class="author" title="${esc(authors.join(', '))}">${esc(who)}</div>
+      <div class="date" title="${range}">${relDate(newest.date)}</div>
+      <div></div>
+    </div>`;
+  }
+  const hints = (stubs.get(c) || []).map(e => `<span class="hint">${e.dir === 'in' ? '↘' : '↗'} ${esc(e.hidden.name)}</span>`).join('');
+  return `
+    <div class="row${mc} ${cls(c.branch)}${c.id === selected ? ' selected' : ''}" data-b="${(c.branch.pullOf || c.branch).id}" data-id="${c.id}">${ml}
+      <div class="refs">${refsHtml(new Set([c.id]), view.branches)}</div>
+      <div></div>
+      <div class="msg${c.parents.length > 1 ? ' merge' : ''}" title="${esc(c.msg)}">${c.pullMerge ? `⇅ Synchronisation de ${esc(rootOf(c.branch).name)} (git pull)` : esc(c.msg)}${hints}</div>
+      <div class="author"><span class="avatar" style="background:${avatarColor(c.author)}">${initials(c.author)}</span>${esc(c.author)}</div>
+      <div class="date" title="${c.date.toLocaleString('fr-FR')}">${relDate(c.date)}</div>
+      <div class="hash">${c.hash}</div>
+    </div>`;
+}
+
+function render() {
+  const view = buildView();
+  const edges = buildEdges(view);
+  const graphW = PAD * 2 + (layout(view, edges) - 1) * COL_W;
+
+  const stubs = new Map();
+  for (const e of edges) if (e.kind === 'stub') (stubs.get(e.a) || stubs.set(e.a, []).get(e.a)).push(e);
+
+  const root = document.documentElement.style;
+  root.setProperty('--refs-w', REFS_W + 'px');
+  root.setProperty('--graph-w', graphW + 'px');
+  root.setProperty('--row-h', ROW_H + 'px');
+  const months = monthLabels(view.list);
+  const rows = document.getElementById('rows');
+  rows.classList.remove('focus');
+  rows.innerHTML =
+    `<svg class="lanes" width="${graphW}" height="${view.list.length * ROW_H}" style="left:${REFS_W}px">${edges.map(edgeSvg).join('')}${view.list.map(nodeSvg).join('')}</svg>` +
+    view.list.map((c, i) => rowHtml(c, view, stubs, months[i], i === 0)).join('');
+
+  lastView = { ...view, graphW, edges, months };
+  applyCompareMarks();
+  applySearchMarks();
+  renderLegend(view);
+  renderCrumbs(view);
+  updateLaneBar();
+}
+
+// Un repère à chaque changement de mois en descendant dans le temps.
+// Les dates ne sont pas parfaitement triées (date d'auteur) : on ignore les retours en arrière.
+function monthLabels(list) {
+  let current = Infinity;
+  return list.map(c => {
+    if (c.gap) return '';
+    const d = c.squash ? c.hidden[0].date : c.date;
+    const key = d.getFullYear() * 12 + d.getMonth();
+    if (key >= current) return '';
+    current = key;
+    return d.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+  });
+}
+
+// Barre « Colonnes » : quelles branches occupent les colonnes à la première ligne visible
+let lastView = null;
+function updateLaneBar() {
+  if (!lastView) return;
+  const headerBottom = document.querySelector('header').getBoundingClientRect().bottom;
+  const rowsTop = document.getElementById('rows').getBoundingClientRect().top;
+  const row = Math.max(0, Math.floor((headerBottom - rowsTop) / ROW_H));
+  const lanes = branches
+    .filter(b => lastView.branches.has(b) && !b.empty && b.col !== undefined && b.top <= row && row <= b.bottom)
+    .sort((a, b) => a.col - b.col);
+
+  const svg = document.getElementById('lanebar-svg');
+  svg.setAttribute('width', lastView.graphW);
+  svg.innerHTML = lanes.map(b => {
+    const x = PAD + b.col * COL_W;
+    return `<line x1="${x}" y1="0" x2="${x}" y2="28" stroke="var(${b.color})" stroke-width="2.5"${b.pullOf ? ' stroke-dasharray="3 4" stroke-opacity=".6"' : ''}/>`;
+  }).join('');
+
+  // Une divergence (git pull) porte le nom de sa branche : on ne la nomme pas deux fois
+  const named = lanes.filter(b => !b.pullOf || !lanes.includes(b.pullOf));
+  document.getElementById('lanebar-names').innerHTML = named.map(b => {
+    const main = b.pullOf || b;
+    return `<span class="lname${main.deleted ? ' deleted' : ''}" data-b="${main.id}" style="--c:var(${b.color})" title="Zoomer sur ${esc(main.name)}"><i></i>${esc(main.name)}</span>`;
+  }).join('');
+}
+let laneBarQueued = false;
+const queueLaneBar = () => {
+  if (laneBarQueued) return;
+  laneBarQueued = true;
+  requestAnimationFrame(() => { laneBarQueued = false; updateLaneBar(); });
+};
+window.addEventListener('scroll', queueLaneBar, { passive: true });
+window.addEventListener('resize', queueLaneBar);
+
+// Branches supprimées regroupées par nom, triées de la plus récente à la plus ancienne
+const tipDate = b => byId.get(b.tip).date;
+const mergedByName = new Map();
+for (const b of branches.filter(b => b.deleted && !b.pullOf).sort((a, b) => tipDate(b) - tipDate(a))) {
+  (mergedByName.get(b.name) || mergedByName.set(b.name, []).get(b.name)).push(b);
+}
+const MERGED_SHOWN = 5;
+let mergedExpanded = false;
+
+function renderLegend(view) {
+  const chip = (b, meta) => {
+    const group = b.deleted ? mergedByName.get(b.name) : [b];
+    const state = [b.deleted ? 'deleted' : '', zoom && !group.some(g => view.branches.has(g)) ? 'faded' : '', zoomGroup.includes(b) ? 'current' : ''].join(' ');
+    return `<span class="chip ${state}" data-b="${b.id}" style="--c:var(${b.color})"><span class="dot"></span>${esc(b.name)}${meta ? `<span class="meta">${meta}</span>` : ''}</span>`;
+  };
+  const active = branches.filter(b => !b.deleted && !b.stale).map(b => {
+    let meta = '';
+    if (b.primary) meta = override ? 'principale' : 'principale (détectée)';
+    else if (b.ahead) meta = `↑${b.ahead} non poussé`;
+    else if (b.remoteAhead) meta = `↓${b.remoteAhead} à récupérer`;
+    return chip(b, meta);
+  });
+  const stale = branches.filter(b => b.stale).map(b => chip(b, staleText(b)));
+  // Branches mergées : une entrée par nom, les plus récentes d'abord
+  const mergedGroups = [...mergedByName.values()];
+  const shown = mergedExpanded ? mergedGroups : mergedGroups.slice(0, MERGED_SHOWN);
+  const deleted = shown.map(([b, ...others]) => {
+    const meta = [others.length ? `×${others.length + 1}` : '', b.mergedInto ? `→ ${esc(b.mergedInto.name)}` : 'hors branche'].filter(Boolean).join(' ');
+    return chip(b, meta);
+  });
+  if (mergedGroups.length > MERGED_SHOWN) {
+    deleted.push(`<button class="more" id="more-merged">${mergedExpanded ? 'Réduire' : `+${mergedGroups.length - MERGED_SHOWN} autre${mergedGroups.length - MERGED_SHOWN > 1 ? 's' : ''}`}</button>`);
+  }
+  const group = (label, items) => items.length ? `<div class="group"><span class="label">${label}</span>${items.join('')}</div>` : '';
+  document.getElementById('legend').innerHTML =
+    group('Actives', active) + group('Inactives', stale) + group('Mergées', deleted);
+}
+
+function renderCrumbs(view) {
+  const el = document.getElementById('crumbs');
+  if (!zoom) {
+    el.innerHTML = `<span class="hint">Cliquez sur une branche pour n'afficher qu'elle et ses voisines</span>`;
+    return;
+  }
+  const names = view.trimmed.map(b => esc(b.name)).join(' et ');
+  const toggle = view.trimmed.length
+    ? `<label class="toggle"><input type="checkbox" id="full"${showFull ? ' checked' : ''}> Afficher ${names} en entier</label>`
+    : '';
+  el.innerHTML = `
+    <a href="#" id="back">Tout le graphe</a><span class="sep">›</span>
+    <span class="pill" style="--c:var(${zoom.color})">${esc(zoom.name)}${zoomGroup.length > 1 ? ` ×${zoomGroup.length}` : ''}</span>
+    ${zoom.primary ? '<span class="hint">vue principale : les features sont masquées</span>' : ''}
+    ${toggle}
+    ${!zoom.deleted && !zoom.primary ? `<a href="#" id="cmp-zoom">Comparer avec ${esc(primary.name)}</a>` : ''}
+    <span class="hint right">Échap pour revenir</span>`;
+  document.getElementById('back').addEventListener('click', e => { e.preventDefault(); setZoom(null); });
+  document.getElementById('cmp-zoom')?.addEventListener('click', e => { e.preventDefault(); openCompare(refLabel(zoom), refLabel(primary)); });
+  document.getElementById('full')?.addEventListener('change', e => { showFull = e.target.checked; render(); });
+}
+
+function setZoom(b) {
+  // Une branche sans commit propre se zoome comme la branche qui porte son commit
+  if (b && b.empty) b = byId.get(b.tip).branch;
+  if (b && b.pullOf) b = b.pullOf;
+  zoom = b;
+  zoomGroup = !b ? [] : b.deleted ? mergedByName.get(b.name) : [b];
+  showFull = false;
+  render();
+  window.scrollTo(0, 0);
+}
+
+// ---------------------------------------------------------------------------
+// Détail d'un commit
+// ---------------------------------------------------------------------------
+let selected = null;  // id du commit affiché dans le panneau
+let detailRequest = 0;
+
+// Commits atteignables depuis un commit donné (mis en cache : utilisé à chaque ouverture du détail)
+const reachCache = new Map();
+const reachableFrom = id => reachCache.get(id) || reachCache.set(id, ancestors(id)).get(id);
+
+function branchPill(b, note = '') {
+  const main = b.pullOf || b;
+  return `<span class="pill${main.deleted ? ' deleted' : ''}" data-b="${main.id}" style="--c:var(${main.color})">${esc(main.name)}${note ? `<span class="ahead">${esc(note)}</span>` : ''}</span>`;
+}
+
+// Branches existantes qui contiennent le commit, en regardant la version locale ET celle du serveur
+function containingPills(c) {
+  const out = [];
+  for (const b of branches) {
+    if (b.deleted) continue;
+    const inLocal = b.local && reachableFrom(b.local).has(c.id);
+    const inRemote = b.remote && reachableFrom(b.remote).has(c.id);
+    if (!inLocal && !inRemote) continue;
+    // Une seule des deux versions le contient : on le précise (branche locale en retard ou en avance)
+    const note = b.local && b.remote && inLocal !== inRemote ? (inRemote ? `${REFS.remoteName} seulement` : 'local seulement') : '';
+    out.push(branchPill(b, note));
+  }
+  return out;
+}
+
+async function openDetail(c) {
+  selected = c.id;
+  document.querySelectorAll('.row.selected').forEach(r => r.classList.remove('selected'));
+  document.querySelector(`.row[data-id="${c.id}"]`)?.classList.add('selected');
+  document.body.classList.add('detail-open');
+  queueLaneBar();
+
+  document.body.classList.remove('detail-wide');
+  const panel = document.getElementById('detail');
+  panel.hidden = false;
+  const containing = containingPills(c);
+  const tags = Object.entries(REFS.tags).filter(([, id]) => id === c.id).map(([t]) => `<span class="pill tag">${ICON_TAG}${esc(t)}</span>`);
+  const parents = c.parents.map(pid => `<a class="mono" data-goto="${pid}">${byId.get(pid).hash}</a>`).join(' ') || '<span class="hint">aucun (premier commit)</span>';
+
+  panel.innerHTML = `
+    <button class="close" id="detail-close" title="Fermer (Échap)">×</button>
+    ${compareState ? '<a class="back" id="cmp-back">← Retour à la comparaison</a>' : ''}
+    <h2>${esc(c.msg)}</h2>
+    <pre class="body" id="detail-body"></pre>
+    <dl>
+      <dt>Auteur</dt><dd><span class="avatar" style="background:${avatarColor(c.author)}">${initials(c.author)}</span>${esc(c.author)}<span class="hint" id="detail-email"></span></dd>
+      <dt>Date</dt><dd>${c.date.toLocaleString('fr-FR', { dateStyle: 'long', timeStyle: 'short' })} <span class="hint">(${relDate(c.date)})</span></dd>
+      <dt>Commit</dt><dd><span class="mono">${c.id}</span><button class="copy" id="copy-hash">Copier</button></dd>
+      <dt>Parent${c.parents.length > 1 ? 's' : ''}</dt><dd>${parents}</dd>
+      <dt>Branche</dt><dd>${branchPill(c.branch)}</dd>
+      <dt>Contenu dans</dt><dd>${containing.join('') || '<span class="hint">aucune branche existante</span>'}</dd>
+      ${tags.length ? `<dt>Tags</dt><dd>${tags.join('')}</dd>` : ''}
+    </dl>
+    <div id="detail-files"><h3>Fichiers modifiés</h3><p class="hint">Chargement…</p></div>`;
+
+  const filesEl = document.getElementById('detail-files');
+  if (DATA.demo) {
+    filesEl.innerHTML = '<h3>Fichiers modifiés</h3><p class="hint">Non disponible en démo : lancez gitgraph sur un dépôt.</p>';
+    return;
+  }
+  const req = ++detailRequest;
+  let info;
+  try {
+    info = await fetch(`api/commit?id=${c.id}`).then(readJson);
+  } catch (err) {
+    info = { error: err.message };
+  }
+  if (req !== detailRequest) return; // un autre commit a été sélectionné entre-temps
+  if (info.error) {
+    filesEl.innerHTML = `<h3>Fichiers modifiés</h3><p class="error">${esc(info.error)}</p>`;
+    return;
+  }
+
+  // Le corps du message, sans la première ligne déjà affichée en titre
+  document.getElementById('detail-body').textContent = info.message.split('\n').slice(1).join('\n').trim();
+  document.getElementById('detail-email').textContent = info.email ? `<${info.email}>` : '';
+
+  const added = info.files.reduce((s, f) => s + (f.added || 0), 0);
+  const deleted = info.files.reduce((s, f) => s + (f.deleted || 0), 0);
+  detailFiles = info.files;
+  const fileItem = (f, i) => {
+    const slash = f.path.lastIndexOf('/');
+    const name = slash < 0 ? esc(f.path) : `<span>${esc(f.path.slice(0, slash + 1))}</span>${esc(f.path.slice(slash + 1))}`;
+    const renamed = f.oldPath ? `<span class="hint renamed">renommé depuis ${esc(f.oldPath)}</span>` : '';
+    const stat = f.added == null ? '<span class="hint">binaire</span>' : `<span class="add">+${f.added}</span> <span class="del">−${f.deleted}</span>`;
+    return `<li data-file="${i}" title="Voir les modifications"><span class="path"><span class="chev">▸</span>${name}${renamed}</span><span>${stat}</span></li>`;
+  };
+  const note = c.parents.length > 1 ? `<p class="hint">Merge : changements par rapport au premier parent (${byId.get(c.parents[0])?.hash || info.parents[0].slice(0, 7)}).</p>` : '';
+  const more = info.totalFiles > info.files.length ? `<p class="hint">… et ${info.totalFiles - info.files.length} autres fichiers.</p>` : '';
+  filesEl.innerHTML = `
+    <h3>Fichiers modifiés (${info.totalFiles})<span class="stat"><span class="add">+${added}</span> <span class="del">−${deleted}</span></span></h3>
+    ${note}
+    <ul class="files">${info.files.map(fileItem).join('')}</ul>
+    ${more}`;
+}
+
+// Modifications d'un fichier : affichées sous le fichier, le panneau s'élargit pour le code
+let detailFiles = [];
+
+async function toggleFileDiff(li) {
+  const open = li.nextElementSibling?.classList.contains('diff');
+  if (open) {
+    li.nextElementSibling.remove();
+    li.classList.remove('open');
+  } else {
+    const f = detailFiles[li.dataset.file];
+    const box = document.createElement('li');
+    box.className = 'diff';
+    box.innerHTML = '<p class="hint">Chargement…</p>';
+    li.after(box);
+    li.classList.add('open');
+    const u = new URL('api/diff', location.href);
+    u.searchParams.set('id', selected);
+    u.searchParams.set('path', f.path);
+    if (f.oldPath) u.searchParams.set('old', f.oldPath);
+    let res;
+    try { res = await fetch(u).then(readJson); } catch (err) { res = { error: err.message }; }
+    box.innerHTML = res.error ? `<p class="error">${esc(res.error)}</p>` : diffHtml(res.diff, res.truncated);
+  }
+  document.body.classList.toggle('detail-wide', !!document.querySelector('.files .diff'));
+  queueLaneBar();
+}
+
+// Diff unifié → tableau avec numéros de ligne (ancien / nouveau)
+function diffHtml(text, truncated) {
+  const out = [];
+  let oldN = 0, newN = 0, inHunk = false;
+  const row = (cls, a, b, code) => `<tr class="${cls}"><td class="n">${a}</td><td class="n">${b}</td><td class="code">${esc(code) || ' '}</td></tr>`;
+  for (const raw of text.split('\n')) {
+    const l = raw.replace(/\r$/, '');
+    const hunk = l.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@(.*)/);
+    if (hunk) {
+      oldN = +hunk[1]; newN = +hunk[2]; inHunk = true;
+      out.push(`<tr class="hunk"><td class="n">…</td><td class="n">…</td><td class="code">${esc(hunk[3].trim())}</td></tr>`);
+      continue;
+    }
+    if (!inHunk) {
+      if (l.startsWith('Binary files')) return '<p class="hint">Fichier binaire : contenu non affichable.</p>';
+      continue;
+    }
+    if (l.startsWith('+')) out.push(row('add', '', newN++, l.slice(1)));
+    else if (l.startsWith('-')) out.push(row('del', oldN++, '', l.slice(1)));
+    else if (l.startsWith(' ')) out.push(row('', oldN++, newN++, l.slice(1)));
+  }
+  if (!out.length) return '<p class="hint">Aucune modification de contenu (droits ou renommage seul).</p>';
+  return `<table class="difftable">${out.join('')}</table>${truncated ? '<p class="hint">Modifications tronquées (fichier trop long).</p>' : ''}`;
+}
+
+function closeDetail() {
+  selected = null;
+  detailRequest++;
+  compareState = null;
+  applyCompareMarks();
+  document.getElementById('detail').hidden = true;
+  document.body.classList.remove('detail-open', 'detail-wide');
+  document.querySelectorAll('.row.selected').forEach(r => r.classList.remove('selected'));
+  queueLaneBar();
+}
+
+// ---------------------------------------------------------------------------
+// Comparer deux branches
+// ---------------------------------------------------------------------------
+let compareState = null; // { a, b } : noms des références comparées
+const COMPARE_LIST_MAX = 300;
+
+// Branches existantes (locales et distantes si elles diffèrent) et tags
+function compareOptions() {
+  const opts = [];
+  for (const b of branches) {
+    if (b.deleted) continue;
+    if (b.local) opts.push({ label: b.name, id: b.local, branch: b });
+    if (b.remote && b.remote !== b.local) opts.push({ label: `${REFS.remoteName}/${b.name}`, id: b.remote, branch: b });
+  }
+  for (const [t, id] of Object.entries(REFS.tags)) opts.push({ label: `tag ${t}`, id });
+  return opts;
+}
+
+const refLabel = b => b.local ? b.name : `${REFS.remoteName}/${b.name}`;
+
+// a et b : noms de références (branche, branche distante ou tag), comme dans les listes déroulantes
+function openCompare(aLabel, bLabel) {
+  const options = compareOptions();
+  if (!aLabel) {
+    // Par défaut : la branche zoomée, sinon la branche courante, sinon la branche active la plus récente
+    const head = branches.find(x => x.name === REFS.head);
+    const recent = branches.filter(x => !x.deleted && !x.primary && !x.stale).sort((x, y) => tipDate(y) - tipDate(x))[0];
+    const pick = (zoom && !zoom.deleted && !zoom.primary && zoom) || (head && !head.primary && head) || recent
+              || branches.find(x => !x.deleted && !x.primary) || primary;
+    aLabel = refLabel(pick);
+  }
+  bLabel ||= refLabel(primary);
+  const idOf = label => options.find(o => o.label === label)?.id;
+  const a = idOf(aLabel), b = idOf(bLabel);
+  compareState = { a: aLabel, b: bLabel };
+  selected = null;
+  document.querySelectorAll('.row.selected').forEach(r => r.classList.remove('selected'));
+  document.body.classList.remove('detail-wide');
+  document.body.classList.add('detail-open');
+
+  const select = (key, value) => `<select id="cmp-${key}">${options.map(o => `<option value="${esc(o.label)}"${o.label === value ? ' selected' : ''}>${esc(o.label)}</option>`).join('')}</select>`;
+  const setA = ancestors(a), setB = ancestors(b);
+  const onlyA = commits.filter(c => setA.has(c.id) && !setB.has(c.id));
+  const onlyB = commits.filter(c => setB.has(c.id) && !setA.has(c.id));
+  const nA = esc(aLabel), nB = esc(bLabel);
+
+  const item = c => `<li data-goto="${c.id}"><span class="dot" style="--c:var(${rootOf(c.branch).color})"></span><span class="mono">${c.hash}</span><span class="m${c.parents.length > 1 ? ' merge' : ''}">${c.pullMerge ? '⇅ Synchronisation (git pull)' : esc(c.msg)}</span><span class="hint">${esc(c.author)} · ${relDate(c.date)}</span></li>`;
+  const list = (cs, cls, title) => `
+    <h3><span class="swatch ${cls}"></span>${title}<span class="stat">${cs.length}</span></h3>
+    ${cs.length ? `<ul class="cmp-list">${cs.slice(0, COMPARE_LIST_MAX).map(item).join('')}</ul>` : '<p class="hint">Aucun.</p>'}
+    ${cs.length > COMPARE_LIST_MAX ? `<p class="hint">… et ${cs.length - COMPARE_LIST_MAX} autres.</p>` : ''}`;
+
+  let verdict;
+  if (a === b || (!onlyA.length && !onlyB.length)) verdict = `<p class="ok">✓ ${nA} et ${nB} pointent sur le même commit.</p>`;
+  else if (!onlyA.length) verdict = `<p class="ok">✓ Tout ${nA} est déjà dans ${nB}${onlyB.length ? ` (${nB} a ${onlyB.length} commit${onlyB.length > 1 ? 's' : ''} de plus)` : ''}.</p>`;
+  else if (!onlyB.length) verdict = `<p class="ok">${nA} est en avance sur ${nB} de ${onlyA.length} commit${onlyA.length > 1 ? 's' : ''}, sans retard.</p>`;
+  else verdict = `<p>${nA} a <b>${onlyA.length}</b> commit${onlyA.length > 1 ? 's' : ''} à intégrer dans ${nB}, et <b>${onlyB.length}</b> de retard sur ${nB}.</p>`;
+
+  const panel = document.getElementById('detail');
+  panel.hidden = false;
+  panel.innerHTML = `
+    <button class="close" id="detail-close" title="Fermer (Échap)">×</button>
+    <h2>Comparer</h2>
+    <div class="cmp-form">${select('a', aLabel)}<button class="copy" id="cmp-swap" title="Inverser">⇄</button>${select('b', bLabel)}</div>
+    ${verdict}
+    ${DATA.truncated ? `<p class="hint">Calcul limité aux ${commits.length} commits chargés.</p>` : ''}
+    ${list(onlyA, 'cmp-a', `Dans ${nA}, pas dans ${nB}`)}
+    ${list(onlyB, 'cmp-b', `Dans ${nB}, pas dans ${nA}`)}`;
+  document.getElementById('cmp-a').addEventListener('change', e => openCompare(e.target.value, compareState.b));
+  document.getElementById('cmp-b').addEventListener('change', e => openCompare(compareState.a, e.target.value));
+  document.getElementById('cmp-swap').addEventListener('click', () => openCompare(compareState.b, compareState.a));
+
+  compareState.onlyA = new Set(onlyA.map(c => c.id));
+  compareState.onlyB = new Set(onlyB.map(c => c.id));
+  applyCompareMarks();
+  queueLaneBar();
+}
+
+// Repère de couleur à gauche des lignes concernées par la comparaison
+function applyCompareMarks() {
+  document.querySelectorAll('.row.cmp-a, .row.cmp-b').forEach(r => r.classList.remove('cmp-a', 'cmp-b'));
+  if (!compareState) return;
+  for (const r of document.querySelectorAll('.row[data-id]')) {
+    if (compareState.onlyA.has(r.dataset.id)) r.classList.add('cmp-a');
+    else if (compareState.onlyB.has(r.dataset.id)) r.classList.add('cmp-b');
+  }
+}
+
+function goToCommit(id) {
+  const c = byId.get(id);
+  if (!c) return;
+  openDetail(c);
+  document.querySelector(`.row[data-id="${id}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+}
+
+// ---------------------------------------------------------------------------
+// Recherche : message, auteur ou début du hash, sans tenir compte des accents ni des majuscules
+// ---------------------------------------------------------------------------
+const normalize = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+for (const c of commits) c.searchText = normalize(`${c.msg}\n${c.author}`);
+
+let searchMatches = [];
+let searchIndex = -1;
+let searchedFor = '';
+
+function runSearch(query) {
+  searchedFor = query;
+  const q = normalize(query.trim());
+  searchMatches = q ? commits.filter(c => c.searchText.includes(q) || c.id.startsWith(q) || c.hash.startsWith(q)) : [];
+  searchIndex = -1;
+  updateSearchCount();
+  applySearchMarks();
+}
+
+function updateSearchCount() {
+  const el = document.getElementById('search-count');
+  const n = searchMatches.length;
+  if (!document.getElementById('search').value.trim()) el.textContent = '';
+  else if (!n) el.textContent = 'Aucun résultat';
+  else el.textContent = searchIndex < 0 ? `${n} résultat${n > 1 ? 's' : ''} · Entrée` : `${searchIndex + 1} / ${n}`;
+}
+
+function applySearchMarks() {
+  document.querySelectorAll('.row.match, .row.match-current').forEach(r => r.classList.remove('match', 'match-current'));
+  if (!searchMatches.length || !lastView) return;
+  const ids = new Set(searchMatches.map(c => c.id));
+  const current = searchMatches[searchIndex]?.id;
+  for (const r of document.querySelectorAll('.row[data-id]')) {
+    if (ids.has(r.dataset.id)) r.classList.add(r.dataset.id === current ? 'match-current' : 'match');
+  }
+  // Un regroupement (structure seule) qui contient un résultat est signalé aussi
+  for (const node of lastView.list) {
+    if (node.squash && node.hidden.some(h => ids.has(h.id))) document.querySelector(`.row[data-run="${node.hidden[0].id}"]`)?.classList.add('match');
+  }
+}
+
+// Rend un commit visible : déplie son regroupement, ou élargit / quitte le zoom qui le masque
+function revealCommit(c) {
+  if (document.querySelector(`.row[data-id="${c.id}"]`)) return;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const node = lastView.list.find(x => (x.squash || x.gap) && x.hidden.includes(c));
+    if (node?.squash) expandedRuns.add(node.hidden[0].id);
+    else if (zoom && (node?.gap || lastView.branches.has(rootOf(c.branch)))) showFull = true;
+    else if (zoom) { zoom = null; zoomGroup = []; showFull = false; }
+    render();
+    if (document.querySelector(`.row[data-id="${c.id}"]`)) return;
+  }
+}
+
+function goToMatch(step) {
+  if (!searchMatches.length) return;
+  searchIndex = (searchIndex + step + searchMatches.length) % searchMatches.length;
+  const c = searchMatches[searchIndex];
+  revealCommit(c);
+  applySearchMarks();
+  updateSearchCount();
+  document.querySelector(`.row[data-id="${c.id}"]`)?.scrollIntoView({ block: 'center' });
+  if (selected) openDetail(c); // panneau ouvert : il suit le résultat
+}
+
+// ---------------------------------------------------------------------------
+// Export de la vue actuelle en image (SVG autonome, converti en PNG si besoin)
+// ---------------------------------------------------------------------------
+const EXPORT_FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
+const EXPORT_COLS = { msg: 520, author: 160, date: 110, hash: 70 };
+
+function buildExportSvg() {
+  const v = lastView;
+  const style = getComputedStyle(document.documentElement);
+  const color = name => style.getPropertyValue(name).trim() || '#888';
+  const resolve = str => str.replace(/var\((--[\w-]+)\)/g, (_, n) => color(n));
+
+  const ctx = document.createElement('canvas').getContext('2d');
+  const measure = (text, font) => { ctx.font = font; return ctx.measureText(text).width; };
+  const fit = (text, width, font) => {
+    if (measure(text, font) <= width) return text;
+    while (text && measure(text + '…', font) > width) text = text.slice(0, -1);
+    return text + '…';
+  };
+  const F13 = `13px ${EXPORT_FONT}`, F12 = `500 12px ${EXPORT_FONT}`, MONO = '12px Consolas, ui-monospace, monospace';
+
+  const HEAD = 58;
+  const xMsg = REFS_W + v.graphW + 8;
+  const xAuthor = xMsg + EXPORT_COLS.msg, xDate = xAuthor + EXPORT_COLS.author, xHash = xDate + EXPORT_COLS.date;
+  const width = xHash + EXPORT_COLS.hash + 16;
+  const height = HEAD + v.list.length * ROW_H + 12;
+
+  const out = [];
+  const text = (x, y, str, attrs = '') => `<text x="${x}" y="${y}" dominant-baseline="central" ${attrs}>${esc(str)}</text>`;
+  const scope = zoom ? `Zoom : ${zoom.name}` : 'Toutes les branches';
+  const options = [structureOnly && 'structure seule', flattenPulls && 'git pull aplatis'].filter(Boolean).join(', ');
+  out.push(`<rect width="${width}" height="${height}" fill="var(--bg)"/>`);
+  out.push(text(16, 20, DATA.repo, 'font-size="16" font-weight="600"'));
+  out.push(text(16, 40, `${scope}${options ? ` · ${options}` : ''} · exporté le ${new Date().toLocaleDateString('fr-FR')}`, 'fill="var(--muted)" font-size="12"'));
+  out.push(`<line x1="0" y1="${HEAD - 0.5}" x2="${width}" y2="${HEAD - 0.5}" stroke="var(--line)"/>`);
+  out.push(`<g transform="translate(0 ${HEAD})">`);
+
+  v.list.forEach((c, i) => {
+    const y = i * ROW_H + ROW_H / 2;
+    if (v.months[i]) {
+      out.push(`<line x1="0" y1="${i * ROW_H}" x2="${width}" y2="${i * ROW_H}" stroke="var(--muted)" stroke-opacity=".45"/>`);
+      out.push(text(12, i * ROW_H + 9, v.months[i].replace(/^./, ch => ch.toUpperCase()), 'fill="var(--muted)" font-size="10.5"'));
+    } else {
+      out.push(`<line x1="0" y1="${i * ROW_H}" x2="${width}" y2="${i * ROW_H}" stroke="var(--line)" stroke-opacity=".5"/>`);
+    }
+
+    // Étiquettes, alignées à droite contre le graphe
+    const ids = c.gap ? new Set(c.hidden.map(h => h.id)) : c.squash ? new Set() : new Set([c.id]);
+    let right = REFS_W - 8;
+    for (const r of refsData(ids, v.branches).reverse()) {
+      const label = r.kind === 'local' && r.ahead ? `${r.text} ↑${r.ahead}` : r.text;
+      const w = Math.min(measure(label, F12) + 16, 220);
+      const x = right - w;
+      if (x < 4) break;
+      const col = r.b ? `var(${r.b.color})` : 'var(--muted)';
+      const box = r.kind === 'local' && r.head
+        ? `fill="${col}" stroke="${col}"`
+        : r.kind === 'local' ? `fill="${col}" fill-opacity=".16" stroke="${col}" stroke-opacity=".6"`
+        : `fill="none" stroke="${col}" stroke-opacity=".6" stroke-dasharray="3 2"`;
+      out.push(`<rect x="${x}" y="${y - 10}" width="${w}" height="20" rx="${r.kind === 'tag' ? 3 : 6}" ${box}/>`);
+      const txt = r.kind === 'local' && r.head ? 'fill="#fff" font-weight="600"' : r.kind === 'local' ? 'font-weight="500"' : 'fill="var(--muted)" font-weight="500"';
+      out.push(text(x + 8, y, fit(label, w - 14, F12), `font-size="12" ${txt}${r.kind === 'deleted' ? ' font-style="italic"' : ''}`));
+      right = x - 4;
+    }
+
+    // Message, auteur, date, hash
+    let msg, muted = false;
+    if (c.gap) { msg = `··· ${c.hidden.length} commits ${c.gap === 'top' ? 'plus récents' : 'plus anciens'} de ${c.branch.name}`; muted = true; }
+    else if (c.squash) { msg = `··· ${c.hidden.length} commits sur ${rootOf(c.branch).name}`; muted = true; }
+    else { msg = c.pullMerge ? `⇅ Synchronisation de ${rootOf(c.branch).name} (git pull)` : c.msg; muted = c.parents.length > 1; }
+    out.push(text(xMsg, y, fit(msg, EXPORT_COLS.msg - 16, F13), muted ? 'fill="var(--muted)"' : ''));
+    if (!c.gap) {
+      const who = c.squash ? [...new Set(c.hidden.map(h => h.author))].join(', ') : c.author;
+      const when = c.squash ? c.hidden[0].date : c.date;
+      out.push(text(xAuthor, y, fit(who, EXPORT_COLS.author - 12, F13), 'fill="var(--muted)"'));
+      out.push(text(xDate, y, relDate(when), 'fill="var(--muted)"'));
+      if (!c.squash) out.push(text(xHash, y, c.hash, 'fill="var(--muted)" font-size="12" font-family="Consolas, ui-monospace, monospace"'));
+    }
+  });
+
+  // Le graphe lui-même, tel qu'affiché
+  out.push(`<g transform="translate(${REFS_W} 0)">${v.edges.map(edgeSvg).join('')}${v.list.map(nodeSvg).join('')}</g>`);
+  out.push('</g>');
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" font-family='${EXPORT_FONT}' font-size="13" fill="var(--fg)">${out.join('')}</svg>`;
+  return { svg: resolve(svg), width, height };
+}
+
+function downloadBlob(blob, name) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+}
+
+async function exportImage(format) {
+  const error = document.getElementById('export-error');
+  error.hidden = true;
+  const { svg, width, height } = buildExportSvg();
+  const safe = s => s.replace(/[\\/:*?"<>|\s]+/g, '-');
+  const name = `${safe(DATA.repo)}${zoom ? '-' + safe(zoom.name) : ''}-${new Date().toISOString().slice(0, 10)}`;
+  if (format === 'svg') return downloadBlob(new Blob([svg], { type: 'image/svg+xml' }), `${name}.svg`);
+
+  // Les navigateurs limitent la taille d'une image : on réduit la résolution, puis on renonce
+  const scale = Math.min(2, 30000 / height, 30000 / width);
+  if (scale < 0.75) {
+    error.textContent = 'Vue trop longue pour une image PNG : exportez en SVG, ou réduisez la vue (zoom, « Structure seule »).';
+    error.hidden = false;
+    return;
+  }
+  const img = new Image();
+  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  await img.decode();
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(width * scale);
+  canvas.height = Math.round(height * scale);
+  const ctx = canvas.getContext('2d');
+  ctx.scale(scale, scale);
+  ctx.drawImage(img, 0, 0, width, height);
+  canvas.toBlob(blob => downloadBlob(blob, `${name}.png`), 'image/png');
+}
+
+// ---------------------------------------------------------------------------
+// Interactions
+// ---------------------------------------------------------------------------
+function highlight(id) {
+  const rows = document.getElementById('rows');
+  rows.classList.toggle('focus', id != null);
+  rows.querySelectorAll('.on').forEach(el => el.classList.remove('on'));
+  if (id != null) rows.querySelectorAll('.b' + id).forEach(el => el.classList.add('on'));
+}
+
+// Surbrillance au survol des lignes : désactivée par défaut, choix mémorisé dans le navigateur
+let hoverHighlight = false;
+try { hoverHighlight = localStorage.getItem('gitgraph.hoverHighlight') === '1'; } catch {}
+const hoverToggle = document.getElementById('hover-hl');
+hoverToggle.checked = hoverHighlight;
+hoverToggle.addEventListener('change', () => {
+  hoverHighlight = hoverToggle.checked;
+  if (!hoverHighlight) highlight(null);
+  try { localStorage.setItem('gitgraph.hoverHighlight', hoverHighlight ? '1' : '0'); } catch {}
+});
+
+const rowsEl = document.getElementById('rows');
+rowsEl.addEventListener('mouseover', e => {
+  if (!hoverHighlight) return;
+  const r = e.target.closest('.row');
+  if (r) highlight(r.dataset.b);
+});
+rowsEl.addEventListener('mouseleave', () => highlight(null));
+
+const legendEl = document.getElementById('legend');
+legendEl.addEventListener('mouseover', e => { const ch = e.target.closest('.chip'); highlight(ch ? ch.dataset.b : null); });
+legendEl.addEventListener('mouseleave', () => highlight(null));
+
+// Menus de l'en-tête : un seul ouvert à la fois, fermés par un clic ailleurs
+function toggleMenu(id, onOpen) {
+  const menu = document.getElementById(id);
+  const opening = menu.hidden;
+  closeMenus();
+  if (opening) { menu.hidden = false; onOpen?.(menu); }
+}
+function closeMenus() {
+  document.querySelectorAll('.menu').forEach(m => { m.hidden = true; });
+}
+
+document.addEventListener('click', e => {
+  const t = e.target;
+  if (t.closest('#repo')) return toggleMenu('repo-menu', fillRepoMenu);
+  if (t.closest('#export-btn')) return toggleMenu('export-menu');
+  const exp = t.closest('[data-export]');
+  if (exp) { exportImage(exp.dataset.export).then(() => { if (document.getElementById('export-error').hidden) closeMenus(); }); return; }
+  if (t.closest('.menu')) return;
+  closeMenus();
+  if (t.closest('#more-merged')) { mergedExpanded = !mergedExpanded; return render(); }
+  if (t.closest('#detail-close')) return closeDetail();
+  if (t.closest('#compare-btn')) return openCompare();
+  if (t.closest('#cmp-back')) return openCompare(compareState.a, compareState.b);
+  const file = t.closest('.files li[data-file]');
+  if (file) return toggleFileDiff(file);
+  if (t.closest('#copy-hash')) {
+    navigator.clipboard?.writeText(selected).then(() => { t.textContent = 'Copié'; }, () => {});
+    return;
+  }
+  const goto = t.closest('[data-goto]');
+  if (goto) return goToCommit(goto.dataset.goto);
+  const branchTarget = t.closest('.chip[data-b], .refs .pill[data-b], .detail .pill[data-b], .lname[data-b]');
+  if (branchTarget) return setZoom(branches[branchTarget.dataset.b]);
+  if (t.closest('.row.gap')) { showFull = true; return render(); }
+  const run = t.closest('.row.squash');
+  if (run) { expandedRuns.add(run.dataset.run); return render(); }
+  const row = t.closest('.row[data-id]');
+  if (row) return row.dataset.id === selected ? closeDetail() : openDetail(byId.get(row.dataset.id));
+});
+document.addEventListener('keydown', e => {
+  const typing = e.target.closest('input, select, textarea');
+  // « / » : aller à la recherche
+  if (e.key === '/' && !typing) { e.preventDefault(); searchInput.focus(); searchInput.select(); return; }
+  if (e.key !== 'Escape') return;
+  if (![...document.querySelectorAll('.menu')].every(m => m.hidden)) return closeMenus();
+  if (e.target === searchInput) {
+    searchInput.value = '';
+    runSearch('');
+    searchInput.blur();
+    return;
+  }
+  if (typing) return;
+  if (selected || compareState) closeDetail();
+  else if (zoom) setZoom(null);
+});
+
+// Recherche : Entrée pour le résultat suivant, Maj+Entrée pour le précédent
+const searchInput = document.getElementById('search');
+let searchTimer;
+searchInput.addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => runSearch(searchInput.value), 120);
+});
+searchInput.addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  clearTimeout(searchTimer);
+  if (searchInput.value !== searchedFor) runSearch(searchInput.value);
+  goToMatch(e.shiftKey ? -1 : 1);
+});
+
+// Aplatir les git pull : activé par défaut, choix mémorisé dans le navigateur
+try { flattenPulls = localStorage.getItem('gitgraph.flattenPulls') !== '0'; } catch {}
+const flattenToggle = document.getElementById('flatten');
+flattenToggle.checked = flattenPulls;
+flattenToggle.addEventListener('change', () => {
+  flattenPulls = flattenToggle.checked;
+  expandedRuns.clear();
+  try { localStorage.setItem('gitgraph.flattenPulls', flattenPulls ? '1' : '0'); } catch {}
+  render();
+});
+
+// Structure seule : choix mémorisé dans le navigateur
+try { structureOnly = localStorage.getItem('gitgraph.structureOnly') === '1'; } catch {}
+const structureToggle = document.getElementById('structure');
+structureToggle.checked = structureOnly;
+structureToggle.addEventListener('change', () => {
+  structureOnly = structureToggle.checked;
+  expandedRuns.clear();
+  try { localStorage.setItem('gitgraph.structureOnly', structureOnly ? '1' : '0'); } catch {}
+  render();
+});
+
+document.getElementById('theme').addEventListener('click', () => {
+  const root = document.documentElement;
+  const dark = root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+  root.dataset.theme = dark ? 'light' : 'dark';
+});
+
+render();
+</script>
+</body>
+</html>
