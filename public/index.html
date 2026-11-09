@@ -51,7 +51,7 @@
   .repo-open { display: flex; gap: 6px; }
   .repo-open input, .search input { flex: 1; min-width: 0; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); font: inherit; }
   .repo-open button { background: none; border: 1px solid var(--line); color: var(--fg); border-radius: 6px; padding: 3px 10px; cursor: pointer; }
-  body.no-repo .title > :not(h1, .menu-wrap:first-of-type, #theme), body.no-repo .lanebar { display: none; }
+  body.no-repo .search, body.no-repo .actions > :not(#theme), body.no-repo .lanebar { display: none; }
   button.browse { margin: 6px 0 0; background: none; border: 1px solid var(--line); color: var(--fg); border-radius: 6px; padding: 3px 10px; cursor: pointer; font: inherit; }
   button.browse:disabled { opacity: .5; cursor: wait; }
   .repo-picker { max-width: 560px; margin: 40px auto; padding: 0 16px; }
@@ -68,12 +68,41 @@
   .row.month-start { border-top: 1px solid color-mix(in srgb, var(--muted) 45%, transparent); }
   .month { position: absolute; left: 10px; top: -8px; z-index: 1; padding: 0 6px; font-size: 10.5px; line-height: 15px; text-transform: capitalize; color: var(--muted); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; pointer-events: none; }
   .row.first .month { top: 2px; }
-  .title .note { margin-left: auto; color: var(--muted); font-size: 12px; }
-  .title button { margin-left: 12px; background: none; border: 1px solid var(--line); color: var(--fg); border-radius: 6px; padding: 3px 10px; cursor: pointer; }
+  .title button { background: none; border: 1px solid var(--line); color: var(--fg); border-radius: 6px; padding: 3px 10px; cursor: pointer; font: inherit; }
+  .title button:hover { background: var(--hover); }
+  .actions { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+  .actions .count { display: inline-grid; place-items: center; min-width: 16px; height: 16px; margin-left: 6px; padding: 0 4px; border-radius: 8px; font-size: 10.5px; font-weight: 700; color: #fff; background: var(--b-primary); }
+  .actions .count:empty { display: none; }
 
-  .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; }
-  .legend .group { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-  .legend .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; margin-right: 2px; }
+  /* Menu Affichage */
+  .view-menu { left: auto; right: 0; width: 320px; }
+  .view-menu .opt { display: flex; gap: 10px; align-items: flex-start; padding: 6px 8px; border-radius: 6px; cursor: pointer; }
+  .view-menu .opt:hover { background: var(--hover); }
+  .view-menu .opt input { margin: 2px 0 0; }
+  .view-menu .opt .hint { display: block; margin-top: 2px; }
+  .view-menu .note { margin: 8px 8px 0; padding-top: 8px; border-top: 1px solid var(--line); }
+
+  /* Légende des branches : une ligne par groupe */
+  .legend { display: grid; grid-template-columns: max-content 1fr; gap: 6px 12px; align-items: start; }
+  .legend .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; line-height: 24px; }
+  .legend .items { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .legend .items > .hint { margin-left: 4px; }
+  .chip .meta.up { color: var(--p2); font-weight: 700; }
+  .chip .meta.down { color: var(--p1); font-weight: 700; }
+  .chip .meta.star { color: var(--p6); }
+
+  /* Liste des branches mergées */
+  .merged-menu { width: min(420px, 90vw); }
+  .merged-menu input { width: 100%; padding: 4px 8px; margin-bottom: 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); font: inherit; }
+  .merged-list { list-style: none; margin: 0; padding: 0; max-height: 50vh; overflow-y: auto; }
+  .merged-list li { display: grid; grid-template-columns: 9px 1fr auto; gap: 2px 8px; align-items: center; padding: 4px 8px; border-radius: 6px; cursor: pointer; }
+  .merged-list li:hover { background: var(--hover); }
+  .merged-list li.current { box-shadow: inset 3px 0 0 var(--c); }
+  .merged-list .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--c); }
+  .merged-list .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .merged-list li[hidden] { display: none; }
+  .merged-list .dest { grid-column: 2 / 4; }
+  .merged-list .empty { color: var(--muted); padding: 4px 8px; }
   .chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line); cursor: pointer; white-space: nowrap; transition: opacity .12s; }
   .chip:hover { background: var(--hover); }
   .chip.faded { opacity: .35; }
@@ -109,6 +138,7 @@
 
   /* Zoom */
   .crumbs { display: flex; align-items: center; gap: 10px; margin-top: 10px; min-height: 26px; }
+  .crumbs:empty { display: none; }
   .crumbs a { color: var(--b-primary); text-decoration: none; }
   .crumbs a:hover { text-decoration: underline; }
   .crumbs .sep { color: var(--muted); }
@@ -206,20 +236,28 @@
     <h1>LisiGraph</h1>
     <span class="menu-wrap"><button class="repo" id="repo" title="Changer de dépôt"></button><div class="menu repo-menu" id="repo-menu" hidden></div></span>
     <span class="search"><input id="search" type="search" placeholder="Rechercher…  ( / )" autocomplete="off" spellcheck="false"><span class="hint" id="search-count"></span></span>
-    <span class="note" id="note"></span>
-    <label class="toggle" title="Range les commits issus d'un git pull dans la colonne de leur branche, au lieu de les dessiner en parallèle"><input type="checkbox" id="flatten"> Aplatir les git pull</label>
-    <label class="toggle" title="Regroupe les commits ordinaires pour ne garder que les créations de branches, les merges et les tags"><input type="checkbox" id="structure"> Structure seule</label>
-    <label class="toggle" title="Met en évidence la branche du commit survolé"><input type="checkbox" id="hover-hl"> Surbrillance au survol</label>
-    <button id="compare-btn" title="Comparer deux branches">Comparer</button>
-    <span class="menu-wrap"><button id="export-btn" title="Enregistrer la vue actuelle en image">Exporter</button><div class="menu export-menu" id="export-menu" hidden>
-      <button data-export="png">Image PNG</button>
-      <button data-export="svg">Image SVG <span class="hint">vectorielle</span></button>
-      <p class="hint">La vue actuelle : zoom et options compris.</p>
-      <p class="error" id="export-error" hidden></p>
-    </div></span>
-    <button id="theme">Thème</button>
+    <span class="actions">
+      <span class="menu-wrap"><button id="view-btn" title="Options d'affichage du graphe">Affichage<span class="count" id="view-count"></span> ▾</button><div class="menu view-menu" id="view-menu" hidden>
+        <label class="opt"><input type="checkbox" id="flatten"><span>Aplatir les git pull<span class="hint">Range les commits issus d'un git pull dans la colonne de leur branche, au lieu de les dessiner en parallèle.</span></span></label>
+        <label class="opt"><input type="checkbox" id="structure"><span>Structure seule<span class="hint">Regroupe les commits ordinaires pour ne garder que les créations de branches, les merges et les tags.</span></span></label>
+        <label class="opt"><input type="checkbox" id="hover-hl"><span>Surbrillance au survol<span class="hint">Met en évidence la branche du commit survolé.</span></span></label>
+        <p class="hint note" id="note"></p>
+      </div></span>
+      <button id="compare-btn" title="Comparer deux branches">Comparer</button>
+      <span class="menu-wrap"><button id="export-btn" title="Enregistrer la vue actuelle en image">Exporter</button><div class="menu export-menu" id="export-menu" hidden>
+        <button data-export="png">Image PNG</button>
+        <button data-export="svg">Image SVG <span class="hint">vectorielle</span></button>
+        <p class="hint">La vue actuelle : zoom et options compris.</p>
+        <p class="error" id="export-error" hidden></p>
+      </div></span>
+      <button id="theme" title="Basculer entre thème clair et sombre">Thème</button>
+    </span>
   </div>
   <div class="legend" id="legend"></div>
+  <div class="menu merged-menu" id="merged-menu" hidden>
+    <input id="merged-filter" type="search" placeholder="Filtrer les branches mergées…" autocomplete="off" spellcheck="false">
+    <ul class="merged-list" id="merged-list"></ul>
+  </div>
   <div class="crumbs" id="crumbs"></div>
   <div class="lanebar"><div class="lead">Colonnes</div><svg id="lanebar-svg" height="28"></svg><div class="names" id="lanebar-names"></div></div>
 </header>
@@ -902,42 +940,71 @@ const mergedByName = new Map();
 for (const b of branches.filter(b => b.deleted && !b.pullOf).sort((a, b) => tipDate(b) - tipDate(a))) {
   (mergedByName.get(b.name) || mergedByName.set(b.name, []).get(b.name)).push(b);
 }
-const MERGED_SHOWN = 5;
-let mergedExpanded = false;
+// Au-delà, les branches mergées sont repliées derrière un bouton qui ouvre une liste filtrable
+const MERGED_SHOWN = 3;
+const mergedMeta = ([b, ...others]) => [others.length ? `×${others.length + 1}` : '', b.mergedInto ? `→ ${b.mergedInto.name}` : 'hors branche'].filter(Boolean).join(' ');
 
 function renderLegend(view) {
-  const chip = (b, meta) => {
+  const ZOOM_HINT = "Cliquer pour n'afficher que cette branche et ses voisines";
+  // metas : [texte, classe] affichés en petit après le nom ; le détail complet va dans l'infobulle
+  const chip = (b, metas = [], detail = '') => {
     const group = b.deleted ? mergedByName.get(b.name) : [b];
     const state = [b.deleted ? 'deleted' : '', zoom && !group.some(g => view.branches.has(g)) ? 'faded' : '', zoomGroup.includes(b) ? 'current' : ''].join(' ');
-    return `<span class="chip ${state}" data-b="${b.id}" style="--c:var(${b.color})"><span class="dot"></span>${esc(b.name)}${meta ? `<span class="meta">${meta}</span>` : ''}</span>`;
+    const title = [b.name, detail, ZOOM_HINT].filter(Boolean).join('\n');
+    const meta = metas.map(([text, cls = '']) => `<span class="meta ${cls}">${esc(text)}</span>`).join('');
+    return `<span class="chip ${state}" data-b="${b.id}" style="--c:var(${b.color})" title="${esc(title)}"><span class="dot"></span>${esc(b.name)}${meta}</span>`;
   };
+  const plural = (n, word) => `${n} ${word}${n > 1 ? 's' : ''}`;
   const active = branches.filter(b => !b.deleted && !b.stale).map(b => {
-    let meta = '';
-    if (b.primary) meta = override ? 'principale' : 'principale (détectée)';
-    else if (b.ahead) meta = `↑${b.ahead} non poussé`;
-    else if (b.remoteAhead) meta = `↓${b.remoteAhead} à récupérer`;
-    return chip(b, meta);
+    if (b.primary) return chip(b, [['★', 'star']], override ? 'Branche principale' : 'Branche principale (détectée)');
+    const metas = [], detail = [];
+    if (b.ahead) { metas.push([`↑${b.ahead}`, 'up']); detail.push(`${plural(b.ahead, 'commit')} non poussé${b.ahead > 1 ? 's' : ''}`); }
+    if (b.remoteAhead) { metas.push([`↓${b.remoteAhead}`, 'down']); detail.push(`${plural(b.remoteAhead, 'commit')} à récupérer`); }
+    return chip(b, metas, detail.join(' · '));
   });
-  const stale = branches.filter(b => b.stale).map(b => chip(b, staleText(b)));
+  const stale = branches.filter(b => b.stale).map(b => chip(b, [[relDate(tipDate(b)).replace('il y a ', '')]], staleText(b)));
   // Branches mergées : une entrée par nom, les plus récentes d'abord
   const mergedGroups = [...mergedByName.values()];
-  const shown = mergedExpanded ? mergedGroups : mergedGroups.slice(0, MERGED_SHOWN);
-  const deleted = shown.map(([b, ...others]) => {
-    const meta = [others.length ? `×${others.length + 1}` : '', b.mergedInto ? `→ ${esc(b.mergedInto.name)}` : 'hors branche'].filter(Boolean).join(' ');
-    return chip(b, meta);
-  });
-  if (mergedGroups.length > MERGED_SHOWN) {
-    deleted.push(`<button class="more" id="more-merged">${mergedExpanded ? 'Réduire' : `+${mergedGroups.length - MERGED_SHOWN} autre${mergedGroups.length - MERGED_SHOWN > 1 ? 's' : ''}`}</button>`);
+  const mergedChip = g => chip(g[0], [[mergedMeta(g)]]);
+  let deleted;
+  if (mergedGroups.length <= MERGED_SHOWN) {
+    deleted = mergedGroups.map(mergedChip);
+  } else {
+    // Repliées : la plus récente, et celle sur laquelle on est zoomé si c'en est une autre
+    const pinned = mergedGroups.filter((g, i) => i === 0 || g.some(b => zoomGroup.includes(b)));
+    deleted = [`<button class="more" id="more-merged" title="Voir toutes les branches mergées">${mergedGroups.length} branches ▾</button>`,
+      `<span class="hint">dernière :</span>`, ...pinned.map(mergedChip)];
   }
-  const group = (label, items) => items.length ? `<div class="group"><span class="label">${label}</span>${items.join('')}</div>` : '';
+  const group = (label, items) => items.length ? `<span class="label">${label}</span><div class="items">${items.join('')}</div>` : '';
   document.getElementById('legend').innerHTML =
     group('Actives', active) + group('Inactives', stale) + group('Mergées', deleted);
 }
 
+function fillMergedMenu(menu) {
+  const btn = document.getElementById('more-merged');
+  menu.style.left = btn.offsetLeft + 'px';
+  menu.style.top = btn.offsetTop + btn.offsetHeight + 6 + 'px';
+  const input = document.getElementById('merged-filter');
+  input.value = '';
+  document.getElementById('merged-list').innerHTML = [...mergedByName.values()].map(g => {
+    const b = g[0];
+    return `<li data-b="${b.id}" data-name="${esc(b.name.toLowerCase())}" class="${g.some(x => zoomGroup.includes(x)) ? 'current' : ''}" style="--c:var(${b.color})">
+      <span class="dot"></span><span class="name">${esc(b.name)}</span><span class="hint">${relDate(tipDate(b))}</span>
+      <span class="hint dest">${esc(mergedMeta(g))}</span></li>`;
+  }).join('') + '<li class="empty" hidden>Aucune branche ne correspond.</li>';
+  input.focus();
+}
+document.getElementById('merged-filter').addEventListener('input', e => {
+  const q = e.target.value.trim().toLowerCase();
+  const items = [...document.querySelectorAll('#merged-list li[data-b]')];
+  items.forEach(li => { li.hidden = !li.dataset.name.includes(q); });
+  document.querySelector('#merged-list .empty').hidden = items.some(li => !li.hidden);
+});
+
 function renderCrumbs(view) {
   const el = document.getElementById('crumbs');
   if (!zoom) {
-    el.innerHTML = `<span class="hint">Cliquez sur une branche pour n'afficher qu'elle et ses voisines</span>`;
+    el.innerHTML = '';
     return;
   }
   const names = view.trimmed.map(b => esc(b.name)).join(' et ');
@@ -1451,6 +1518,16 @@ rowsEl.addEventListener('mouseleave', () => highlight(null));
 const legendEl = document.getElementById('legend');
 legendEl.addEventListener('mouseover', e => { const ch = e.target.closest('.chip'); highlight(ch ? ch.dataset.b : null); });
 legendEl.addEventListener('mouseleave', () => highlight(null));
+const mergedListEl = document.getElementById('merged-list');
+mergedListEl.addEventListener('mouseover', e => { const li = e.target.closest('li[data-b]'); highlight(li ? li.dataset.b : null); });
+mergedListEl.addEventListener('mouseleave', () => highlight(null));
+
+// Nombre d'options d'affichage activées, rappelé sur le bouton
+function updateViewCount() {
+  const n = document.querySelectorAll('#view-menu input:checked').length;
+  document.getElementById('view-count').textContent = n || '';
+}
+document.getElementById('view-menu').addEventListener('change', updateViewCount);
 
 // Menus de l'en-tête : un seul ouvert à la fois, fermés par un clic ailleurs
 function toggleMenu(id, onOpen) {
@@ -1467,11 +1544,14 @@ document.addEventListener('click', e => {
   const t = e.target;
   if (t.closest('#repo')) return toggleMenu('repo-menu', fillRepoMenu);
   if (t.closest('#export-btn')) return toggleMenu('export-menu');
+  if (t.closest('#view-btn')) return toggleMenu('view-menu');
+  if (t.closest('#more-merged')) return toggleMenu('merged-menu', fillMergedMenu);
   const exp = t.closest('[data-export]');
   if (exp) { exportImage(exp.dataset.export).then(() => { if (document.getElementById('export-error').hidden) closeMenus(); }); return; }
+  const merged = t.closest('#merged-list li[data-b]');
+  if (merged) { closeMenus(); highlight(null); return setZoom(branches[merged.dataset.b]); }
   if (t.closest('.menu')) return;
   closeMenus();
-  if (t.closest('#more-merged')) { mergedExpanded = !mergedExpanded; return render(); }
   if (t.closest('#detail-close')) return closeDetail();
   if (t.closest('#compare-btn')) return openCompare();
   if (t.closest('#cmp-back')) return openCompare(compareState.a, compareState.b);
@@ -1551,6 +1631,7 @@ document.getElementById('theme').addEventListener('click', () => {
   root.dataset.theme = dark ? 'light' : 'dark';
 });
 
+updateViewCount();
 render();
 </script>
 </body>
