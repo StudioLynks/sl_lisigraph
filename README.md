@@ -22,7 +22,7 @@ Aucune autre dépendance : pas de `npm install`.
 
 1. Récupérez le projet :
    ```powershell
-   git clone <adresse-du-depot> LisiGraph
+   git clone https://github.com/StudioLynks/sl_lisigraph.git LisiGraph
    ```
    Choisissez un emplacement durable : la commande pointe vers ce dossier.
 2. Double-cliquez sur **`installer.cmd`** dans le dossier LisiGraph.
