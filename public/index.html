@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>GitGraph</title>
+<title>LisiGraph</title>
 <style>
   :root {
     --bg: #ffffff; --bg-head: #f6f7f9; --fg: #1d2330; --muted: #6b7385; --line: #e6e8ee; --hover: #f0f3f9;
@@ -203,7 +203,7 @@
 <body>
 <header>
   <div class="title">
-    <h1>GitGraph</h1>
+    <h1>LisiGraph</h1>
     <span class="menu-wrap"><button class="repo" id="repo" title="Changer de dépôt"></button><div class="menu repo-menu" id="repo-menu" hidden></div></span>
     <span class="search"><input id="search" type="search" placeholder="Rechercher…  ( / )" autocomplete="off" spellcheck="false"><span class="hint" id="search-count"></span></span>
     <span class="note" id="note"></span>
@@ -228,7 +228,7 @@
 
 <script type="module">
 // ---------------------------------------------------------------------------
-// Données de démonstration, utilisées quand la page est ouverte sans gitgraph.js
+// Données de démonstration, utilisées quand la page est ouverte sans lisigraph.js
 // [id, date, auteur, message, parents], du plus récent au plus ancien
 // ---------------------------------------------------------------------------
 const DEMO_RAW = [
@@ -284,7 +284,7 @@ function fakeHash(s) {
   return (h >>> 0).toString(16).padStart(8, '0').slice(0, 7);
 }
 
-// Données réelles servies par gitgraph.js, sinon démo
+// Données réelles servies par lisigraph.js, sinon démo
 async function loadData() {
   try {
     const res = await fetch('api/graph');
@@ -296,7 +296,7 @@ async function loadData() {
 async function readJson(res) {
   const text = await res.text();
   try { return JSON.parse(text); } catch {
-    return { error: res.ok && text ? 'Réponse illisible du serveur.' : 'Le serveur ne connaît pas cette fonction : arrêtez gitgraph (Ctrl+C) et relancez-le.' };
+    return { error: res.ok && text ? 'Réponse illisible du serveur.' : 'Le serveur ne connaît pas cette fonction : arrêtez lisigraph (Ctrl+C) et relancez-le.' };
   }
 }
 
@@ -308,7 +308,7 @@ async function fillRepoMenu(container) {
   let info;
   try { info = await fetch('api/repos').then(r => r.json()); } catch { info = null; }
   if (!info || info.error) {
-    container.innerHTML = '<p class="hint">Indisponible en démo : lancez la commande gitgraph.</p>';
+    container.innerHTML = '<p class="hint">Indisponible en démo : lancez la commande lisigraph.</p>';
     return;
   }
   const item = r => `<li data-repo="${escText(r.path)}" class="${r.path === info.current ? 'current' : ''}${r.exists ? '' : ' missing'}" title="${r.exists ? '' : 'Dossier introuvable'}"><b>${escText(r.name)}</b><span>${escText(r.path)}</span></li>`;
@@ -326,7 +326,7 @@ async function fillRepoMenu(container) {
     error.hidden = true;
     let res;
     try {
-      res = await fetch('api/open', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-GitGraph': '1' }, body: JSON.stringify({ path: dir }) }).then(readJson);
+      res = await fetch('api/open', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-LisiGraph': '1' }, body: JSON.stringify({ path: dir }) }).then(readJson);
     } catch (err) { res = { error: err.message }; }
     if (res.error) { error.textContent = res.error; error.hidden = false; return; }
     location.href = location.pathname; // sans ?main=, propre à l'ancien dépôt
@@ -340,7 +340,7 @@ async function fillRepoMenu(container) {
     hint.hidden = false;
     let res;
     try {
-      res = await fetch('api/browse', { method: 'POST', headers: { 'X-GitGraph': '1' } }).then(readJson);
+      res = await fetch('api/browse', { method: 'POST', headers: { 'X-LisiGraph': '1' } }).then(readJson);
     } catch (err) { res = { error: err.message }; }
     browse.disabled = false;
     hint.hidden = true;
@@ -370,7 +370,7 @@ const REFS = DATA.refs;
 const NOW = new Date(DATA.now);
 document.getElementById('repo').textContent = DATA.repo + (DATA.demo ? '' : ' ▾');
 document.getElementById('note').textContent = DATA.demo ? 'Démo · données fictives' : `${DATA.commits.length} commits${DATA.truncated ? ' (les plus récents)' : ''} · v${DATA.version}`;
-document.title = DATA.demo ? 'GitGraph' : `${DATA.repo} · GitGraph`;
+document.title = DATA.demo ? 'LisiGraph' : `${DATA.repo} · LisiGraph`;
 
 // ---------------------------------------------------------------------------
 // Réglages
@@ -1029,7 +1029,7 @@ async function openDetail(c) {
 
   const filesEl = document.getElementById('detail-files');
   if (DATA.demo) {
-    filesEl.innerHTML = '<h3>Fichiers modifiés</h3><p class="hint">Non disponible en démo : lancez gitgraph sur un dépôt.</p>';
+    filesEl.innerHTML = '<h3>Fichiers modifiés</h3><p class="hint">Non disponible en démo : lancez lisigraph sur un dépôt.</p>';
     return;
   }
   const req = ++detailRequest;
@@ -1426,15 +1426,18 @@ function highlight(id) {
   if (id != null) rows.querySelectorAll('.b' + id).forEach(el => el.classList.add('on'));
 }
 
+// Réglage mémorisé dans le navigateur (avec reprise des réglages enregistrés sous l'ancien nom GitGraph)
+const loadPref = key => localStorage.getItem('lisigraph.' + key) ?? localStorage.getItem('gitgraph.' + key);
+
 // Surbrillance au survol des lignes : désactivée par défaut, choix mémorisé dans le navigateur
 let hoverHighlight = false;
-try { hoverHighlight = localStorage.getItem('gitgraph.hoverHighlight') === '1'; } catch {}
+try { hoverHighlight = loadPref('hoverHighlight') === '1'; } catch {}
 const hoverToggle = document.getElementById('hover-hl');
 hoverToggle.checked = hoverHighlight;
 hoverToggle.addEventListener('change', () => {
   hoverHighlight = hoverToggle.checked;
   if (!hoverHighlight) highlight(null);
-  try { localStorage.setItem('gitgraph.hoverHighlight', hoverHighlight ? '1' : '0'); } catch {}
+  try { localStorage.setItem('lisigraph.hoverHighlight', hoverHighlight ? '1' : '0'); } catch {}
 });
 
 const rowsEl = document.getElementById('rows');
@@ -1521,24 +1524,24 @@ searchInput.addEventListener('keydown', e => {
 });
 
 // Aplatir les git pull : activé par défaut, choix mémorisé dans le navigateur
-try { flattenPulls = localStorage.getItem('gitgraph.flattenPulls') !== '0'; } catch {}
+try { flattenPulls = loadPref('flattenPulls') !== '0'; } catch {}
 const flattenToggle = document.getElementById('flatten');
 flattenToggle.checked = flattenPulls;
 flattenToggle.addEventListener('change', () => {
   flattenPulls = flattenToggle.checked;
   expandedRuns.clear();
-  try { localStorage.setItem('gitgraph.flattenPulls', flattenPulls ? '1' : '0'); } catch {}
+  try { localStorage.setItem('lisigraph.flattenPulls', flattenPulls ? '1' : '0'); } catch {}
   render();
 });
 
 // Structure seule : choix mémorisé dans le navigateur
-try { structureOnly = localStorage.getItem('gitgraph.structureOnly') === '1'; } catch {}
+try { structureOnly = loadPref('structureOnly') === '1'; } catch {}
 const structureToggle = document.getElementById('structure');
 structureToggle.checked = structureOnly;
 structureToggle.addEventListener('change', () => {
   structureOnly = structureToggle.checked;
   expandedRuns.clear();
-  try { localStorage.setItem('gitgraph.structureOnly', structureOnly ? '1' : '0'); } catch {}
+  try { localStorage.setItem('lisigraph.structureOnly', structureOnly ? '1' : '0'); } catch {}
   render();
 });
 

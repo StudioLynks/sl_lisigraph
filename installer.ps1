@@ -1,6 +1,6 @@
-﻿# Installe la commande « gitgraph » pour l'utilisateur courant :
-# vérifie Git et Node.js, puis ajoute le dossier bin de GitGraph au PATH du compte.
-# À relancer si le dossier GitGraph est déplacé.
+﻿# Installe la commande « lisigraph » pour l'utilisateur courant :
+# vérifie Git et Node.js, puis ajoute le dossier bin de LisiGraph au PATH du compte.
+# À relancer si le dossier LisiGraph est déplacé.
 
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'outils\path.ps1')
@@ -8,7 +8,7 @@ $bin = Join-Path $PSScriptRoot 'bin'
 $ok = $true
 
 Write-Host ''
-Write-Host 'Installation de GitGraph' -ForegroundColor Cyan
+Write-Host 'Installation de LisiGraph' -ForegroundColor Cyan
 Write-Host ''
 
 # Git
@@ -39,9 +39,9 @@ if (-not $ok) {
   exit 1
 }
 
-# On retire un ancien emplacement de GitGraph (dossier déplacé), puis on ajoute celui-ci
+# On retire un ancien emplacement de LisiGraph (dossier déplacé), puis on ajoute celui-ci
 $entries = Get-UserPathEntries
-$kept = @($entries | Where-Object { $_ -eq $bin -or -not (Test-GitGraphBin $_) })
+$kept = @($entries | Where-Object { $_ -eq $bin -or -not (Test-LisiGraphBin $_) })
 $removed = $entries.Count - $kept.Count
 if ($kept -notcontains $bin) { $kept += $bin }
 Set-UserPathEntries $kept
@@ -50,6 +50,6 @@ Write-Host "  [OK] Commande ajoutée : $bin"
 if ($removed -gt 0) { Write-Host '       (ancien emplacement retiré)' }
 
 Write-Host ''
-Write-Host 'GitGraph est installé.' -ForegroundColor Green
-Write-Host 'Fermez et rouvrez vos terminaux (et VS Code), puis tapez :  gitgraph'
+Write-Host 'LisiGraph est installé.' -ForegroundColor Green
+Write-Host 'Fermez et rouvrez vos terminaux (et VS Code), puis tapez :  lisigraph  (ou simplement : lisi)'
 Write-Host ''

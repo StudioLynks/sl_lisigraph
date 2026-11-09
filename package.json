@@ -1,9 +1,9 @@
 {
-  "name": "gitgraph",
-  "version": "1.0.0",
+  "name": "lisigraph",
+  "version": "1.1.0",
   "description": "Graphe lisible des branches et merges d'un dépôt Git",
   "bin": {
-    "gitgraph": "gitgraph.js"
+    "lisigraph": "lisigraph.js"
   },
   "engines": {
     "node": ">=18"

@@ -1,3 +1,0 @@
-#!/bin/sh
-# Lance GitGraph depuis Git Bash : gitgraph [chemin-du-depot] [options]
-exec node "$(dirname "$0")/../gitgraph.js" "$@"

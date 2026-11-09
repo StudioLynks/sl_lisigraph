@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// GitGraph : affiche le graphe des branches d'un dépôt Git dans le navigateur.
+// LisiGraph : affiche le graphe des branches d'un dépôt Git dans le navigateur.
 //
-//   gitgraph [chemin-du-depot] [--main develop] [--max 2000] [--port 5180] [--no-open]
+//   lisigraph [chemin-du-depot] [--main develop] [--max 2000] [--port 5180] [--no-open]
 
 const http = require('http');
 const fs = require('fs');
@@ -21,10 +21,10 @@ function parseArgs(argv) {
     else if (a === '--port') opts.port = parseInt(argv[++i], 10);
     else if (a === '--no-open') opts.open = false;
     else if (a === '-v' || a === '--version') {
-      console.log(`gitgraph ${VERSION}`);
+      console.log(`lisigraph ${VERSION}`);
       process.exit(0);
     } else if (a === '-h' || a === '--help') {
-      console.log('Usage : gitgraph [chemin-du-depot] [--main <branche>] [--max <nb commits>] [--port <port>] [--no-open] [--version]');
+      console.log('Usage : lisigraph [chemin-du-depot] [--main <branche>] [--max <nb commits>] [--port <port>] [--no-open] [--version]');
       process.exit(0);
     } else opts.repo = path.resolve(a);
   }
@@ -163,13 +163,18 @@ function sendJson(res, fn, errorLabel) {
 }
 
 // ---------------------------------------------------------------------------
-// Dépôts récents, mémorisés dans ~/.gitgraph.json
+// Dépôts récents, mémorisés dans ~/.lisigraph.json
 // ---------------------------------------------------------------------------
-const CONFIG = path.join(os.homedir(), '.gitgraph.json');
+const CONFIG = path.join(os.homedir(), '.lisigraph.json');
 const MAX_RECENT = 12;
 
+const OLD_CONFIG = path.join(os.homedir(), '.gitgraph.json'); // avant le renommage en LisiGraph
+
 function loadRecent() {
-  try { return JSON.parse(fs.readFileSync(CONFIG, 'utf8')).recent || []; } catch { return []; }
+  for (const file of [CONFIG, OLD_CONFIG]) {
+    try { return JSON.parse(fs.readFileSync(file, 'utf8')).recent || []; } catch {}
+  }
+  return [];
 }
 function addRecent(repoPath) {
   const recent = [repoPath, ...loadRecent().filter(p => p !== repoPath)].slice(0, MAX_RECENT);
@@ -206,7 +211,7 @@ function openRepo(dir) {
   if (!root) throw new Error(`« ${dir} » n'est pas un dépôt Git (ou le dossier n'existe pas).`);
   opts.repo = root;
   addRecent(root);
-  console.log(`GitGraph : ${root}`);
+  console.log(`LisiGraph : ${root}`);
   return { ok: true, repo: root };
 }
 
@@ -262,7 +267,7 @@ function readBody(req) {
 }
 
 const server = http.createServer(async (req, res) => {
-  // Seules les pages servies par GitGraph lui-même peuvent l'interroger
+  // Seules les pages servies par LisiGraph lui-même peuvent l'interroger
   const port = server.address().port;
   if (![`127.0.0.1:${port}`, `localhost:${port}`].includes(req.headers.host)) {
     res.writeHead(403);
@@ -273,13 +278,13 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/api/repos') return sendJson(res, listRepos, 'Impossible de lire les dépôts récents');
   if (url.pathname === '/api/open') {
     // En-tête personnalisé : un autre site ne peut pas envoyer cette requête sans autorisation (CORS)
-    if (req.method !== 'POST' || req.headers['x-gitgraph'] !== '1') { res.writeHead(403); return res.end(); }
+    if (req.method !== 'POST' || req.headers['x-lisigraph'] !== '1') { res.writeHead(403); return res.end(); }
     let body = {};
     try { body = await readBody(req); } catch {}
     return sendJson(res, () => openRepo(body.path), "Impossible d'ouvrir ce dépôt");
   }
   if (url.pathname === '/api/browse') {
-    if (req.method !== 'POST' || req.headers['x-gitgraph'] !== '1') { res.writeHead(403); return res.end(); }
+    if (req.method !== 'POST' || req.headers['x-lisigraph'] !== '1') { res.writeHead(403); return res.end(); }
     let result;
     if (picking) result = { error: 'Une fenêtre de sélection est déjà ouverte.' };
     else {
@@ -296,7 +301,7 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
     return fs.createReadStream(PAGE).pipe(res);
   }
-  if (url.pathname.startsWith('/api/')) return sendJson(res, () => ({ error: 'Fonction inconnue de ce serveur : relancez gitgraph.' }), '');
+  if (url.pathname.startsWith('/api/')) return sendJson(res, () => ({ error: 'Fonction inconnue de ce serveur : relancez lisigraph.' }), '');
   res.writeHead(404);
   res.end();
 });
@@ -316,7 +321,7 @@ function listen(port) {
   server.listen(port, '127.0.0.1', () => {
     const query = opts.main ? `?main=${encodeURIComponent(opts.main)}` : '';
     const url = `http://127.0.0.1:${server.address().port}/${query}`;
-    console.log(`GitGraph : ${opts.repo || 'aucun dépôt, à choisir dans la page'}`);
+    console.log(`LisiGraph : ${opts.repo || 'aucun dépôt, à choisir dans la page'}`);
     console.log(`→ ${url}   (Ctrl+C pour arrêter, rechargez la page pour mettre à jour)`);
     if (opts.open) openBrowser(url);
   });
