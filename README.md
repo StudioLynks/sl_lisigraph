@@ -56,6 +56,7 @@ Rechargez la page pour voir les nouveaux commits.
 
 | Action | Comment |
 |---|---|
+| Voir où en est le dossier (HEAD) | Bouton **📍** en haut : branche, commit, et **↓n** s'il reste des commits à récupérer · étiquette **HEAD** dans le graphe |
 | Zoomer sur une branche | Clic sur son nom (légende, étiquette, barre « Colonnes ») · **Échap** pour revenir |
 | Détail d'un commit | Clic sur sa ligne · clic sur un fichier pour voir ses modifications |
 | Rechercher | Champ en haut ou touche **/** · **Entrée** / **Maj+Entrée** pour naviguer |

@@ -70,7 +70,8 @@ function readGraph(repo, max) {
   try { head = git(root, ['symbolic-ref', '--quiet', '--short', 'HEAD']).trim(); } catch {}
 
   // Commits : --date-order garantit qu'un commit apparaît avant ses parents
-  const refsToShow = [...new Set([...Object.values(local), ...Object.values(remote), ...Object.values(tags)])];
+  // HEAD en plus : un HEAD détaché peut pointer sur un commit qu'aucune branche ne contient
+  const refsToShow = [...new Set([...Object.values(local), ...Object.values(remote), ...Object.values(tags), ...(headCommit ? [headCommit] : [])])];
   let commits = [];
   if (refsToShow.length) {
     const out = git(root, ['log', '--date-order', `--max-count=${max + 1}`,
@@ -96,7 +97,8 @@ function readGraph(repo, max) {
     commits,
     refs: {
       head: head && local[head] ? head : null,
-      headCommit,
+      headCommit: known.has(headCommit) ? headCommit : null,
+      headOutside: !!headCommit && !known.has(headCommit), // HEAD au-delà des commits chargés (--max)
       remoteName,
       local: keepKnown(local),
       remote: keepKnown(remote),
@@ -184,6 +186,19 @@ function addRecent(repoPath) {
 function repoRoot(dir) {
   try { return path.resolve(git(dir, ['rev-parse', '--show-toplevel']).trim()); } catch { return null; }
 }
+// Pourquoi Git refuse ce dossier alors que c'est bien un dépôt (null s'il n'en est simplement pas un)
+function repoRefusal(dir) {
+  try { git(dir, ['rev-parse', '--show-toplevel']); return null; } catch (e) {
+    const err = String(e.stderr || '');
+    // Guillemets doubles : les simples ne fonctionnent pas dans l'invite de commande (cmd)
+    const fix = err.match(/git config --global --add safe\.directory '?([^'\r\n]+)'?/);
+    if (/dubious ownership/.test(err)) {
+      return `Git refuse d'ouvrir « ${dir} » : le dossier appartient à un autre compte Windows (lecteur réseau, par exemple).\n`
+           + `Si vous faites confiance à ce dossier, autorisez-le une fois pour toutes :\n  git config --global --add safe.directory "${fix ? fix[1] : dir}"`;
+    }
+    return /not a git repository/i.test(err) || !fs.existsSync(dir) ? null : err.trim() || null;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Serveur
@@ -195,11 +210,17 @@ if (opts.repo) {
   // Chemin donné explicitement : il doit être valide
   const root = repoRoot(opts.repo);
   if (!root) {
-    console.error(`« ${opts.repo} » n'est pas un dépôt Git.`);
+    console.error(repoRefusal(opts.repo) || `« ${opts.repo} » n'est pas un dépôt Git.`);
     process.exit(1);
   }
   opts.repo = root;
 } else {
+  // Un dépôt que Git refuse n'est pas remplacé en silence par le dernier dépôt ouvert
+  const refusal = repoRefusal(process.cwd());
+  if (refusal) {
+    console.error(refusal);
+    process.exit(1);
+  }
   // Sinon : le dossier courant, puis le dernier dépôt ouvert, puis le choix dans la page
   opts.repo = repoRoot(process.cwd()) || loadRecent().map(repoRoot).find(Boolean) || null;
 }
@@ -208,7 +229,7 @@ if (opts.repo) addRecent(opts.repo);
 function openRepo(dir) {
   if (!dir) throw new Error('Chemin manquant');
   const root = repoRoot(path.resolve(dir));
-  if (!root) throw new Error(`« ${dir} » n'est pas un dépôt Git (ou le dossier n'existe pas).`);
+  if (!root) throw new Error(repoRefusal(path.resolve(dir)) || `« ${dir} » n'est pas un dépôt Git (ou le dossier n'existe pas).`);
   opts.repo = root;
   addRecent(root);
   console.log(`LisiGraph : ${root}`);

@@ -32,6 +32,10 @@
   .title h1 { font-size: 16px; margin: 0; }
   .title .repo { margin-left: 0; border-color: transparent; color: var(--muted); font: inherit; }
   .title .repo:hover { border-color: var(--line); color: var(--fg); }
+  .title .head-btn { display: inline-flex; align-items: center; gap: 6px; font: inherit; }
+  .title .head-btn b { font-weight: 600; }
+  .title .head-btn .hash { font-size: 12px; }
+  .title .head-btn .down { color: var(--p4); font-weight: 700; }
 
   /* Menus de l'en-tête */
   .menu-wrap { position: relative; }
@@ -129,6 +133,7 @@
   .pill { display: inline-flex; align-items: center; gap: 4px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; padding: 1px 8px; border-radius: 6px; font-size: 12px; font-weight: 500;
           background: color-mix(in srgb, var(--c) 16%, transparent); border: 1px solid color-mix(in srgb, var(--c) 60%, transparent); }
   .pill.head { background: var(--c); color: #fff; border-color: var(--c); font-weight: 600; }
+  .pill.here { --c: var(--fg); background: var(--fg); color: var(--bg); border-color: var(--fg); font-weight: 700; letter-spacing: .03em; }
   .pill.remote { background: transparent; border-style: dashed; color: var(--muted); }
   .pill.deleted { background: transparent; border-style: dashed; font-style: italic; color: var(--muted); }
   .pill.tag { --c: var(--muted); background: transparent; border-radius: 3px 10px 10px 3px; }
@@ -168,6 +173,9 @@
 
   /* Détail d'un commit */
   .row[data-id] { cursor: pointer; }
+  .row.here { box-shadow: inset 3px 0 0 var(--fg); }
+  .row.flash { animation: flash 1.6s ease-out; }
+  @keyframes flash { from { background: color-mix(in srgb, var(--fg) 22%, transparent); } }
   .row.selected, .row.selected:hover { background: color-mix(in srgb, var(--b-primary) 16%, transparent); }
   body.detail-open .graph, body.detail-open header { margin-right: var(--detail-w); }
   .detail { position: fixed; top: 0; right: 0; bottom: 0; width: var(--detail-w); z-index: 10; overflow-y: auto; padding: 16px 18px 24px; background: var(--bg-head); border-left: 1px solid var(--line); }
@@ -235,6 +243,7 @@
   <div class="title">
     <h1>LisiGraph</h1>
     <span class="menu-wrap"><button class="repo" id="repo" title="Changer de dépôt"></button><div class="menu repo-menu" id="repo-menu" hidden></div></span>
+    <button class="head-btn" id="head-btn" hidden></button>
     <span class="search"><input id="search" type="search" placeholder="Rechercher…  ( / )" autocomplete="off" spellcheck="false"><span class="hint" id="search-count"></span></span>
     <span class="actions">
       <span class="menu-wrap"><button id="view-btn" title="Options d'affichage du graphe">Affichage<span class="count" id="view-count"></span> ▾</button><div class="menu view-menu" id="view-menu" hidden>
@@ -510,7 +519,7 @@ for (const c of commits) {
 for (const c of commits) {
   if (c.branch) continue;
   const tag = Object.keys(REFS.tags).find(t => REFS.tags[t] === c.id);
-  addBranch({ name: tag || '(sans branche)', deleted: true, orphan: true, tip: c.id }, c.id);
+  addBranch({ name: tag || (c.id === REFS.headCommit ? 'HEAD détaché' : '(sans branche)'), deleted: true, orphan: true, tip: c.id }, c.id);
 }
 
 // État des branches
@@ -750,7 +759,7 @@ function nodeSvg(c) {
     return `<g class="n ${cls(c.branch)}"><rect x="${X(c) - 4}" y="${Y(c) - 8}" width="8" height="16" rx="4" fill="var(--bg)" stroke="${color}" stroke-width="2" stroke-dasharray="3 2"/></g>`;
   }
   const isHeadTip = REFS.headCommit === c.id;
-  const halo = isHeadTip ? `<circle cx="${X(c)}" cy="${Y(c)}" r="10" fill="${color}" opacity=".22"/>` : '';
+  const halo = isHeadTip ? `<circle cx="${X(c)}" cy="${Y(c)}" r="10" fill="${color}" opacity=".22"/><circle cx="${X(c)}" cy="${Y(c)}" r="10" fill="none" stroke="var(--fg)" stroke-width="2"/>` : '';
   const dot = c.pullMerge
     ? `<circle cx="${X(c)}" cy="${Y(c)}" r="3.5" fill="var(--bg)" stroke="${color}" stroke-width="2" opacity=".7"/>`
     : c.parents.length > 1
@@ -782,10 +791,12 @@ const ICON_TAG = '<svg width="11" height="11" viewBox="0 0 16 16" fill="currentC
 // Étiquettes des commits représentés par une ligne (un commit, ou tous ceux d'un bloc masqué)
 function refsData(ids, viewBranches) {
   const out = [];
+  // Position du dossier de travail : toujours en premier
+  if (ids.has(REFS.headCommit)) out.push({ kind: 'here', text: 'HEAD', title: headTitle() });
   for (const b of branches) {
     if (!viewBranches.has(b) && !b.empty) continue;
     if (b.deleted) {
-      if (ids.has(b.tip) && !b.pullOf) out.push({ kind: 'deleted', b, text: b.name, title: b.mergedInto ? `Branche supprimée, mergée dans ${b.mergedInto.name}` : 'Commits hors de toute branche' });
+      if (ids.has(b.tip) && !b.pullOf && !(b.orphan && b.tip === REFS.headCommit)) out.push({ kind: 'deleted', b, text: b.name, title: b.mergedInto ? `Branche supprimée, mergée dans ${b.mergedInto.name}` : 'Commits hors de toute branche' });
       continue;
     }
     const head = REFS.head === b.name;
@@ -805,6 +816,7 @@ function refsData(ids, viewBranches) {
 function refsHtml(ids, viewBranches) {
   return refsData(ids, viewBranches).map(r => {
     if (r.kind === 'tag') return `<span class="pill tag">${ICON_TAG}${esc(r.text)}</span>`;
+    if (r.kind === 'here') return `<span class="pill here" title="${esc(r.title)}">${r.text}</span>`;
     const kindCls = r.kind === 'local' ? (r.head ? ' head' : '') : ` ${r.kind}`;
     const extra = r.kind === 'local' ? `${r.synced ? ICON_CLOUD : ''}${r.ahead ? `<span class="ahead">↑${r.ahead}</span>` : ''}` : '';
     return `<span class="pill${kindCls}" data-b="${r.b.id}" style="--c:var(${r.b.color})" title="${esc(r.title)}">${esc(r.text)}${extra}</span>`;
@@ -849,7 +861,7 @@ function rowHtml(c, view, stubs, month = '', first = false) {
   }
   const hints = (stubs.get(c) || []).map(e => `<span class="hint">${e.dir === 'in' ? '↘' : '↗'} ${esc(e.hidden.name)}</span>`).join('');
   return `
-    <div class="row${mc} ${cls(c.branch)}${c.id === selected ? ' selected' : ''}" data-b="${(c.branch.pullOf || c.branch).id}" data-id="${c.id}">${ml}
+    <div class="row${mc} ${cls(c.branch)}${c.id === selected ? ' selected' : ''}${c.id === REFS.headCommit ? ' here' : ''}" data-b="${(c.branch.pullOf || c.branch).id}" data-id="${c.id}">${ml}
       <div class="refs">${refsHtml(new Set([c.id]), view.branches)}</div>
       <div></div>
       <div class="msg${c.parents.length > 1 ? ' merge' : ''}" title="${esc(c.msg)}">${c.pullMerge ? `⇅ Synchronisation de ${esc(rootOf(c.branch).name)} (git pull)` : esc(c.msg)}${hints}</div>
@@ -1294,6 +1306,44 @@ function goToCommit(id) {
 }
 
 // ---------------------------------------------------------------------------
+// Position du dossier de travail (HEAD)
+// ---------------------------------------------------------------------------
+const headBranch = branches.find(b => !b.deleted && b.name === REFS.head);
+function headTitle() {
+  const where = headBranch ? `sur la branche ${headBranch.name}` : 'sur ce commit précis (HEAD détaché, hors de toute branche)';
+  const late = headBranch?.remoteAhead ? ` · ${headBranch.remoteAhead} commit(s) sur ${REFS.remoteName} pas encore récupérés (git pull)` : '';
+  return `Le dossier de travail est ${where}${late}`;
+}
+function goToHead() {
+  const c = byId.get(REFS.headCommit);
+  if (!c) return;
+  revealCommit(c);
+  const row = document.querySelector(`.row[data-id="${c.id}"]`);
+  if (!row) return;
+  row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  row.classList.remove('flash');
+  void row.offsetWidth; // relance l'animation
+  row.classList.add('flash');
+}
+{
+  const btn = document.getElementById('head-btn');
+  const c = byId.get(REFS.headCommit);
+  if (c) {
+    const name = headBranch ? `<b>${esc(headBranch.name)}</b>` : '<b>HEAD détaché</b>';
+    const late = headBranch?.remoteAhead ? `<span class="down">↓${headBranch.remoteAhead}</span>` : '';
+    btn.innerHTML = `📍 ${name}<span class="hash">${c.hash}</span>${late}`;
+    btn.title = `${headTitle()}
+Cliquer pour aller à ce commit`;
+    btn.hidden = false;
+  } else if (REFS.headOutside) {
+    btn.innerHTML = '📍 <span class="hint">HEAD plus ancien que les commits chargés</span>';
+    btn.title = 'Relancez avec --max pour charger plus de commits';
+    btn.disabled = true;
+    btn.hidden = false;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Recherche : message, auteur ou début du hash, sans tenir compte des accents ni des majuscules
 // ---------------------------------------------------------------------------
 const normalize = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -1412,13 +1462,13 @@ function buildExportSvg() {
       const w = Math.min(measure(label, F12) + 16, 220);
       const x = right - w;
       if (x < 4) break;
-      const col = r.b ? `var(${r.b.color})` : 'var(--muted)';
-      const box = r.kind === 'local' && r.head
+      const col = r.b ? `var(${r.b.color})` : r.kind === 'here' ? 'var(--fg)' : 'var(--muted)';
+      const box = r.kind === 'here' || (r.kind === 'local' && r.head)
         ? `fill="${col}" stroke="${col}"`
         : r.kind === 'local' ? `fill="${col}" fill-opacity=".16" stroke="${col}" stroke-opacity=".6"`
         : `fill="none" stroke="${col}" stroke-opacity=".6" stroke-dasharray="3 2"`;
       out.push(`<rect x="${x}" y="${y - 10}" width="${w}" height="20" rx="${r.kind === 'tag' ? 3 : 6}" ${box}/>`);
-      const txt = r.kind === 'local' && r.head ? 'fill="#fff" font-weight="600"' : r.kind === 'local' ? 'font-weight="500"' : 'fill="var(--muted)" font-weight="500"';
+      const txt = r.kind === 'here' ? 'fill="var(--bg)" font-weight="700"' : r.kind === 'local' && r.head ? 'fill="#fff" font-weight="600"' : r.kind === 'local' ? 'font-weight="500"' : 'fill="var(--muted)" font-weight="500"';
       out.push(text(x + 8, y, fit(label, w - 14, F12), `font-size="12" ${txt}${r.kind === 'deleted' ? ' font-style="italic"' : ''}`));
       right = x - 4;
     }
@@ -1554,6 +1604,7 @@ document.addEventListener('click', e => {
   closeMenus();
   if (t.closest('#detail-close')) return closeDetail();
   if (t.closest('#compare-btn')) return openCompare();
+  if (t.closest('#head-btn')) return goToHead();
   if (t.closest('#cmp-back')) return openCompare(compareState.a, compareState.b);
   const file = t.closest('.files li[data-file]');
   if (file) return toggleFileDiff(file);
