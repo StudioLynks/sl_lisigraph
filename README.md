@@ -7,7 +7,7 @@ Un graphe **clair et lisible** des branches et des merges d'un dépôt Git, dans
 - Les `git pull` qui « mergent une branche dans elle-même » rangés proprement dans leur branche.
 - Zoom sur une branche, comparaison de deux branches, détail d'un commit avec ses fichiers modifiés.
 
-LisiGraph ne fait que **lire** l'historique : il ne modifie jamais un dépôt. Tout reste sur votre poste (le petit serveur n'est accessible que depuis votre ordinateur).
+LisiGraph ne fait que **lire** l'historique : il ne modifie jamais vos fichiers, vos branches ni vos commits. Seule exception, à votre demande : le bouton **Fetch**, qui met à jour les branches `origin/…`. Tout reste sur votre poste (le petit serveur n'est accessible que depuis votre ordinateur).
 
 ---
 
@@ -58,6 +58,7 @@ Rechargez la page pour voir les nouveaux commits.
 |---|---|
 | Voir où en est le dossier (HEAD) | Bouton **📍** en haut : branche, commit, et **↓n** s'il reste des commits à récupérer · étiquette **HEAD** dans le graphe |
 | Voir l'état du dossier (git status) | Bouton à côté du **📍** : fichiers modifiés, non suivis, en conflit, opération en cours (merge, rebase…), date du dernier fetch · clic sur un fichier pour voir ses modifications |
+| Récupérer les nouveautés du dépôt distant | Bouton **Fetch** : `git fetch` sur `origin`, sans toucher aux fichiers ni à la branche en cours, puis le graphe se recharge |
 | Zoomer sur une branche | Clic sur son nom (légende, étiquette, barre « Colonnes ») · **Échap** pour revenir |
 | Détail d'un commit | Clic sur sa ligne · clic sur un fichier pour voir ses modifications |
 | Rechercher | Champ en haut ou touche **/** · **Entrée** / **Maj+Entrée** pour naviguer |

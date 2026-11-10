@@ -47,6 +47,9 @@
   .export-menu { left: auto; right: 0; }
   .export-menu button { display: block; width: 100%; margin: 0 0 4px; text-align: left; }
   .export-menu p { margin: 6px 0 0; }
+  .fetch-menu { left: auto; right: 0; width: 320px; }
+  .fetch-menu p { margin: 0 0 8px; }
+  .fetch-menu .error { margin: 8px 0 0; font-size: 12px; }
   .repo-menu { width: min(520px, 90vw); }
   .menu .label, .repo-picker .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; margin: 6px 0; }
   .repo-list { list-style: none; margin: 0 0 8px; padding: 0; max-height: 50vh; overflow-y: auto; }
@@ -258,6 +261,12 @@
         <label class="opt"><input type="checkbox" id="structure"><span>Structure seule<span class="hint">Regroupe les commits ordinaires pour ne garder que les créations de branches, les merges et les tags.</span></span></label>
         <label class="opt"><input type="checkbox" id="hover-hl"><span>Surbrillance au survol<span class="hint">Met en évidence la branche du commit survolé.</span></span></label>
         <p class="hint note" id="note"></p>
+      </div></span>
+      <span class="menu-wrap" id="fetch-wrap" hidden><button id="fetch-btn" title="Récupérer les nouveautés du dépôt distant (git fetch)">Fetch</button><div class="menu fetch-menu" id="fetch-menu" hidden>
+        <p>Récupère les nouveaux commits et branches de <b id="fetch-remote">origin</b>.</p>
+        <p class="hint">Ne touche ni aux fichiers du dossier, ni à la branche en cours : seules les branches <span id="fetch-remote2">origin</span>/… sont mises à jour (dans le dossier .git).</p>
+        <button id="fetch-run">Lancer le fetch</button>
+        <p class="error" id="fetch-error" hidden></p>
       </div></span>
       <button id="compare-btn" title="Comparer deux branches">Comparer</button>
       <span class="menu-wrap"><button id="export-btn" title="Enregistrer la vue actuelle en image">Exporter</button><div class="menu export-menu" id="export-menu" hidden>
@@ -509,7 +518,9 @@ function addBranch(props, startId) {
   return b;
 }
 for (const info of ordered) {
-  addBranch({ ...info, primary: info === primaryInfo, persistent: info === primaryInfo || LONG_LIVED.includes(info.name) }, info.tip);
+  const b = addBranch({ ...info, primary: info === primaryInfo, persistent: info === primaryInfo || LONG_LIVED.includes(info.name) }, info.tip);
+  // Commits d'origin pas encore récupérés dans la branche locale : dessinés comme la divergence d'un git pull
+  if (info.local && info.remote && !byId.get(info.remote).branch) addBranch({ name: info.name, deleted: true, pullOf: b, tip: info.remote }, info.remote);
 }
 // Branches supprimées : retrouvées via les commits de merge
 for (const c of commits) {
@@ -1454,6 +1465,28 @@ function openWorking() {
 }
 
 // ---------------------------------------------------------------------------
+// Fetch : récupère les nouveautés du dépôt distant, puis recharge le graphe
+// ---------------------------------------------------------------------------
+if (!DATA.demo) {
+  document.getElementById('fetch-wrap').hidden = false;
+  document.getElementById('fetch-remote').textContent = REFS.remoteName;
+  document.getElementById('fetch-remote2').textContent = REFS.remoteName;
+}
+async function runFetch() {
+  const btn = document.getElementById('fetch-run'), errEl = document.getElementById('fetch-error');
+  btn.disabled = true;
+  btn.textContent = 'Fetch en cours…';
+  errEl.hidden = true;
+  let res;
+  try { res = await fetch('api/fetch', { method: 'POST', headers: { 'x-lisigraph': '1' } }).then(readJson); } catch (err) { res = { error: err.message }; }
+  if (res.ok) return location.reload();
+  errEl.textContent = res.error;
+  errEl.hidden = false;
+  btn.disabled = false;
+  btn.textContent = 'Réessayer';
+}
+
+// ---------------------------------------------------------------------------
 // Recherche : message, auteur ou début du hash, sans tenir compte des accents ni des majuscules
 // ---------------------------------------------------------------------------
 const normalize = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -1704,6 +1737,8 @@ document.addEventListener('click', e => {
   const t = e.target;
   if (t.closest('#repo')) return toggleMenu('repo-menu', fillRepoMenu);
   if (t.closest('#export-btn')) return toggleMenu('export-menu');
+  if (t.closest('#fetch-btn')) return toggleMenu('fetch-menu');
+  if (t.closest('#fetch-run')) return runFetch();
   if (t.closest('#view-btn')) return toggleMenu('view-menu');
   if (t.closest('#more-merged')) return toggleMenu('merged-menu', fillMergedMenu);
   const exp = t.closest('[data-export]');

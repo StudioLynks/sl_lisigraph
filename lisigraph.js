@@ -205,6 +205,29 @@ function readWorkingDiff(repo, filePath, oldPath, untracked) {
   return { diff: `@@ -0,0 +1,${lines.length} @@\n${lines.map(l => '+' + l).join('\n')}`, truncated: fs.statSync(full).size > MAX_DIFF };
 }
 
+// Fetch : la seule commande qui écrit dans le dépôt. Elle ne met à jour que les branches distantes
+// (origin/…) dans .git : ni les fichiers du dossier, ni HEAD, ni les branches locales.
+const FETCH_TIMEOUT = 120 * 1000;
+let fetching = false;
+
+function runFetch(repo) {
+  const remotes = git(repo, ['remote']).split('\n').map(s => s.trim()).filter(Boolean);
+  if (!remotes.length) return Promise.resolve({ error: "Ce dépôt n'a aucun dépôt distant." });
+  const remote = remotes.includes('origin') ? 'origin' : remotes[0];
+  return new Promise(resolve => {
+    // Aucune demande d'identifiants : personne ne pourrait y répondre, le fetch resterait bloqué
+    const env = { ...process.env, GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never' };
+    // --no-prune : les branches distantes supprimées restent connues, rien n'est effacé
+    execFile('git', ['-C', repo, 'fetch', '--no-prune', remote], { encoding: 'utf8', timeout: FETCH_TIMEOUT, windowsHide: true, env }, (err, stdout, stderr) => {
+      if (!err) return resolve({ ok: true, remote });
+      const auth = /terminal prompts disabled|could not read (Username|Password)|Authentication failed|Permission denied/i.test(stderr);
+      resolve({ error: err.killed ? `Le fetch a dépassé ${FETCH_TIMEOUT / 1000} s et a été arrêté.`
+        : auth ? `${remote} demande des identifiants que LisiGraph ne peut pas saisir.\nLancez une fois « git fetch » dans un terminal, dans ce dossier, puis réessayez.\n\n${stderr.trim()}`
+        : stderr.trim() || err.message });
+    });
+  });
+}
+
 function sendJson(res, fn, errorLabel) {
   let body;
   try {
@@ -370,6 +393,16 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/api/graph') return sendJson(res, () => readGraph(opts.repo, opts.max), 'Impossible de lire le dépôt');
   if (url.pathname === '/api/commit') return sendJson(res, () => readCommit(opts.repo, q('id')), 'Impossible de lire le commit');
   if (url.pathname === '/api/diff') return sendJson(res, () => readDiff(opts.repo, q('id'), q('path'), q('old')), 'Impossible de lire les modifications');
+  if (url.pathname === '/api/fetch') {
+    if (req.method !== 'POST' || req.headers['x-lisigraph'] !== '1') { res.writeHead(403); return res.end(); }
+    let result;
+    if (fetching) result = { error: 'Un fetch est déjà en cours.' };
+    else {
+      fetching = true;
+      try { result = await runFetch(opts.repo); } catch (err) { result = { error: err.stderr || err.message }; } finally { fetching = false; }
+    }
+    return sendJson(res, () => result, '');
+  }
   if (url.pathname === '/api/status') return sendJson(res, () => readStatus(opts.repo), "Impossible de lire l'état du dossier");
   if (url.pathname === '/api/wdiff') return sendJson(res, () => readWorkingDiff(opts.repo, q('path'), q('old'), q('untracked') === '1'), 'Impossible de lire les modifications');
   if (url.pathname === '/' || url.pathname === '/index.html') {
