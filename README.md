@@ -59,6 +59,7 @@ Rechargez la page pour voir les nouveaux commits.
 | Voir où en est le dossier (HEAD) | Bouton **📍** en haut : branche, commit, et **↓n** s'il reste des commits à récupérer · étiquette **HEAD** dans le graphe |
 | Voir l'état du dossier (git status) | Bouton à côté du **📍** : fichiers modifiés, non suivis, en conflit, opération en cours (merge, rebase…), date du dernier fetch · clic sur un fichier pour voir ses modifications |
 | Récupérer les nouveautés du dépôt distant | Bouton **Fetch** : `git fetch` sur `origin`, sans toucher aux fichiers ni à la branche en cours, puis le graphe se recharge |
+| Exporter un commit | Dans son détail : **Copier le résumé** (texte à coller dans un message) ou **Patch** (fichier à appliquer ailleurs avec `git am <fichier>`) |
 | Zoomer sur une branche | Clic sur son nom (légende, étiquette, barre « Colonnes ») · **Échap** pour revenir |
 | Détail d'un commit | Clic sur sa ligne · clic sur un fichier pour voir ses modifications |
 | Rechercher | Champ en haut ou touche **/** · **Entrée** / **Maj+Entrée** pour naviguer |

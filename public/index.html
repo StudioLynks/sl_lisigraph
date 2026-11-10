@@ -196,6 +196,11 @@
   .detail a { color: var(--b-primary); cursor: pointer; text-decoration: none; }
   .detail a:hover { text-decoration: underline; }
   .detail .copy { background: none; border: 1px solid var(--line); color: var(--muted); border-radius: 5px; font-size: 11px; padding: 0 6px; cursor: pointer; }
+  .detail-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 4px 0 12px; }
+  .detail-actions button, .detail-actions a { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 6px; font: inherit; font-weight: 500; cursor: pointer;
+    background: color-mix(in srgb, var(--b-primary) 12%, transparent); border: 1px solid color-mix(in srgb, var(--b-primary) 55%, transparent); color: var(--fg); }
+  .detail-actions button:hover, .detail .detail-actions a:hover { background: color-mix(in srgb, var(--b-primary) 22%, transparent); text-decoration: none; }
+  .detail .actions-hint { margin: -6px 0 12px; font-size: 12px; }
   .detail h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 18px 0 8px; display: flex; gap: 8px; }
   .detail h3 .stat { margin-left: auto; text-transform: none; letter-spacing: 0; }
   .files { list-style: none; margin: 0; padding: 0; }
@@ -1112,6 +1117,13 @@ async function openDetail(c) {
     <button class="close" id="detail-close" title="Fermer (Échap)">×</button>
     ${compareState ? '<a class="back" id="cmp-back">← Retour à la comparaison</a>' : ''}
     <h2>${esc(c.msg)}</h2>
+    <div class="detail-actions">
+      <button id="copy-summary" title="Titre, auteur, date, hash et fichiers modifiés, en texte à coller dans un message">📋 Copier le résumé</button>
+      ${DATA.demo ? '' : c.parents.length > 1
+        ? '<span class="hint">Un merge ne s’exporte pas en patch.</span>'
+        : `<a href="api/patch?id=${c.id}" download title="Télécharger ce commit au format patch (git format-patch)">⤓ Télécharger le patch</a>`}
+    </div>
+    ${DATA.demo || c.parents.length > 1 ? '' : '<p class="hint actions-hint">Le patch s’applique dans une autre copie du dépôt avec <span class="mono">git am &lt;fichier&gt;</span>.</p>'}
     <pre class="body" id="detail-body"></pre>
     <dl>
       <dt>Auteur</dt><dd><span class="avatar" style="background:${avatarColor(c.author)}">${initials(c.author)}</span>${esc(c.author)}<span class="hint" id="detail-email"></span></dd>
@@ -1145,6 +1157,7 @@ async function openDetail(c) {
   // Le corps du message, sans la première ligne déjà affichée en titre
   document.getElementById('detail-body').textContent = info.message.split('\n').slice(1).join('\n').trim();
   document.getElementById('detail-email').textContent = info.email ? `<${info.email}>` : '';
+  detailInfo = info;
 
   const added = info.files.reduce((s, f) => s + (f.added || 0), 0);
   const deleted = info.files.reduce((s, f) => s + (f.deleted || 0), 0);
@@ -1167,6 +1180,26 @@ async function openDetail(c) {
 
 // Modifications d'un fichier : affichées sous le fichier, le panneau s'élargit pour le code
 let detailFiles = [];
+let detailInfo = null; // détail du commit affiché, une fois chargé
+
+// Résumé texte d'un commit, à coller dans un message ou un ticket
+function commitSummary(c) {
+  const info = detailInfo?.id === c.id ? detailInfo : null;
+  const lines = [info ? info.message : c.msg, ''];
+  lines.push(`Commit : ${c.id}`);
+  lines.push(`Auteur : ${c.author}${info?.email ? ` <${info.email}>` : ''}`);
+  lines.push(`Date : ${c.date.toLocaleString('fr-FR', { dateStyle: 'long', timeStyle: 'short' })}`);
+  lines.push(`Branche : ${rootOf(c.branch).name}`);
+  if (info) {
+    lines.push('', `Fichiers modifiés (${info.totalFiles}) :`);
+    for (const f of info.files) {
+      const stat = f.added == null ? 'binaire' : `+${f.added} −${f.deleted}`;
+      lines.push(`  ${f.oldPath ? `${f.oldPath} → ` : ''}${f.path}  (${stat})`);
+    }
+    if (info.totalFiles > info.files.length) lines.push(`  … et ${info.totalFiles - info.files.length} autres`);
+  }
+  return lines.join('\n');
+}
 
 async function toggleFileDiff(li) {
   const open = li.nextElementSibling?.classList.contains('diff');
@@ -1754,6 +1787,10 @@ document.addEventListener('click', e => {
   if (t.closest('#cmp-back')) return openCompare(compareState.a, compareState.b);
   const file = t.closest('.files li[data-file]');
   if (file) return toggleFileDiff(file);
+  if (t.closest('#copy-summary')) {
+    navigator.clipboard?.writeText(commitSummary(byId.get(selected))).then(() => { t.textContent = 'Copié'; }, () => {});
+    return;
+  }
   if (t.closest('#copy-hash')) {
     navigator.clipboard?.writeText(selected).then(() => { t.textContent = 'Copié'; }, () => {});
     return;

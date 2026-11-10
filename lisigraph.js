@@ -153,6 +153,27 @@ function readDiff(repo, id, filePath, oldPath) {
   return { diff: diff.slice(0, MAX_DIFF), truncated: diff.length > MAX_DIFF };
 }
 
+// Un commit au format patch (git format-patch), à appliquer ailleurs avec git am.
+// Octets bruts : un patch peut contenir du binaire ou un autre encodage que l'UTF-8.
+function sendPatch(res, repo, id) {
+  try {
+    if (!/^[0-9a-f]{4,40}$/i.test(id)) throw new Error('Identifiant de commit invalide');
+    const [hash, parents, subject] = git(repo, ['log', '-1', `--format=%h${FIELD}%P${FIELD}%s`, id, '--']).trim().split(FIELD);
+    if (parents.split(' ').length > 1) throw new Error("Un commit de fusion ne s'exporte pas en patch.");
+    const patch = execFileSync('git', ['-C', repo, 'format-patch', '-1', '--stdout', id, '--'], { maxBuffer: 256 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
+    const slug = subject.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 52) || 'commit';
+    res.writeHead(200, {
+      'Content-Type': 'text/x-patch; charset=utf-8',
+      'Content-Disposition': `attachment; filename="${hash}-${slug}.patch"`,
+      'Cache-Control': 'no-store',
+    });
+    res.end(patch);
+  } catch (err) {
+    res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end(`Impossible d'exporter ce commit :\n${err.stderr || err.message}`);
+  }
+}
+
 // État du dossier de travail (git status).
 // --no-optional-locks : git status n'écrit pas son cache dans .git, LisiGraph reste en lecture seule.
 const STATUS_MAX = 1000;
@@ -403,6 +424,7 @@ const server = http.createServer(async (req, res) => {
     }
     return sendJson(res, () => result, '');
   }
+  if (url.pathname === '/api/patch') return sendPatch(res, opts.repo, q('id'));
   if (url.pathname === '/api/status') return sendJson(res, () => readStatus(opts.repo), "Impossible de lire l'état du dossier");
   if (url.pathname === '/api/wdiff') return sendJson(res, () => readWorkingDiff(opts.repo, q('path'), q('old'), q('untracked') === '1'), 'Impossible de lire les modifications');
   if (url.pathname === '/' || url.pathname === '/index.html') {
