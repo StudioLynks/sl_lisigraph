@@ -65,7 +65,7 @@ Rechargez la page pour voir les nouveaux commits.
 | Rechercher | Champ en haut ou touche **/** · **Entrée** / **Maj+Entrée** pour naviguer |
 | Comparer deux branches | Bouton **Comparer** |
 | Changer de dépôt | Clic sur le nom du dépôt en haut · **Parcourir…** ou coller un chemin |
-| Exporter en image | Bouton **Exporter** (PNG ou SVG de la vue actuelle) |
+| Exporter en image | Bouton **Exporter** (PNG ou SVG de la vue actuelle) · choisir **50**, **200** lignes en partant du haut, ou **Tout** |
 
 Options d'affichage (mémorisées) : **Aplatir les git pull**, **Structure seule** (regroupe les commits ordinaires), **Surbrillance au survol**, thème clair ou sombre.
 

@@ -47,6 +47,9 @@
   .export-menu { left: auto; right: 0; }
   .export-menu button { display: block; width: 100%; margin: 0 0 4px; text-align: left; }
   .export-menu p { margin: 6px 0 0; }
+  .export-rows { display: flex; gap: 4px; margin-bottom: 10px; }
+  .export-rows button { flex: 1; margin: 0; text-align: center; }
+  .export-rows button.on { background: var(--b-primary); border-color: var(--b-primary); color: #fff; }
   .fetch-menu { left: auto; right: 0; width: 320px; }
   .fetch-menu p { margin: 0 0 8px; }
   .fetch-menu .error { margin: 8px 0 0; font-size: 12px; }
@@ -275,6 +278,10 @@
       </div></span>
       <button id="compare-btn" title="Comparer deux branches">Comparer</button>
       <span class="menu-wrap"><button id="export-btn" title="Enregistrer la vue actuelle en image">Exporter</button><div class="menu export-menu" id="export-menu" hidden>
+        <div class="label">Lignes, en partant du haut</div>
+        <div class="export-rows" id="export-rows">
+          <button data-rows="50">50</button><button data-rows="200">200</button><button data-rows="0">Tout</button>
+        </div>
         <button data-export="png">Image PNG</button>
         <button data-export="svg">Image SVG <span class="hint">vectorielle</span></button>
         <p class="hint">La vue actuelle : zoom et options compris.</p>
@@ -1590,8 +1597,12 @@ function goToMatch(step) {
 const EXPORT_FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
 const EXPORT_COLS = { msg: 520, author: 160, date: 110, hash: 70 };
 
-function buildExportSvg() {
+function buildExportSvg(maxRows) {
   const v = lastView;
+  // Seulement le haut de la vue : une image de tout l'historique ne se lit pas
+  const rows = maxRows ? v.list.slice(0, maxRows) : v.list;
+  const cut = v.list.length - rows.length;
+  const rowsH = rows.length * ROW_H;
   const style = getComputedStyle(document.documentElement);
   const color = name => style.getPropertyValue(name).trim() || '#888';
   const resolve = str => str.replace(/var\((--[\w-]+)\)/g, (_, n) => color(n));
@@ -1609,7 +1620,7 @@ function buildExportSvg() {
   const xMsg = REFS_W + v.graphW + 8;
   const xAuthor = xMsg + EXPORT_COLS.msg, xDate = xAuthor + EXPORT_COLS.author, xHash = xDate + EXPORT_COLS.date;
   const width = xHash + EXPORT_COLS.hash + 16;
-  const height = HEAD + v.list.length * ROW_H + 12;
+  const height = HEAD + rowsH + (cut ? ROW_H : 0) + 12;
 
   const out = [];
   const text = (x, y, str, attrs = '') => `<text x="${x}" y="${y}" dominant-baseline="central" ${attrs}>${esc(str)}</text>`;
@@ -1621,7 +1632,7 @@ function buildExportSvg() {
   out.push(`<line x1="0" y1="${HEAD - 0.5}" x2="${width}" y2="${HEAD - 0.5}" stroke="var(--line)"/>`);
   out.push(`<g transform="translate(0 ${HEAD})">`);
 
-  v.list.forEach((c, i) => {
+  rows.forEach((c, i) => {
     const y = i * ROW_H + ROW_H / 2;
     if (v.months[i]) {
       out.push(`<line x1="0" y1="${i * ROW_H}" x2="${width}" y2="${i * ROW_H}" stroke="var(--muted)" stroke-opacity=".45"/>`);
@@ -1664,8 +1675,13 @@ function buildExportSvg() {
     }
   });
 
-  // Le graphe lui-même, tel qu'affiché
-  out.push(`<g transform="translate(${REFS_W} 0)">${v.edges.map(edgeSvg).join('')}${v.list.map(nodeSvg).join('')}</g>`);
+  // Le graphe lui-même, tel qu'affiché, coupé sous la dernière ligne exportée
+  out.push(`<clipPath id="export-cut"><rect x="${-REFS_W}" y="0" width="${width}" height="${rowsH}"/></clipPath>`);
+  out.push(`<g transform="translate(${REFS_W} 0)" clip-path="url(#export-cut)">${v.edges.map(edgeSvg).join('')}${rows.map(nodeSvg).join('')}</g>`);
+  if (cut) {
+    out.push(`<line x1="0" y1="${rowsH}" x2="${width}" y2="${rowsH}" stroke="var(--line)"/>`);
+    out.push(text(xMsg, rowsH + ROW_H / 2, `··· ${cut} ligne${cut > 1 ? 's' : ''} plus ancienne${cut > 1 ? 's' : ''} non exportée${cut > 1 ? 's' : ''}`, 'fill="var(--muted)"'));
+  }
   out.push('</g>');
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" font-family='${EXPORT_FONT}' font-size="13" fill="var(--fg)">${out.join('')}</svg>`;
@@ -1685,7 +1701,7 @@ function downloadBlob(blob, name) {
 async function exportImage(format) {
   const error = document.getElementById('export-error');
   error.hidden = true;
-  const { svg, width, height } = buildExportSvg();
+  const { svg, width, height } = buildExportSvg(exportRows);
   const safe = s => s.replace(/[\\/:*?"<>|\s]+/g, '-');
   const name = `${safe(DATA.repo)}${zoom ? '-' + safe(zoom.name) : ''}-${new Date().toISOString().slice(0, 10)}`;
   if (format === 'svg') return downloadBlob(new Blob([svg], { type: 'image/svg+xml' }), `${name}.svg`);
@@ -1693,7 +1709,7 @@ async function exportImage(format) {
   // Les navigateurs limitent la taille d'une image : on réduit la résolution, puis on renonce
   const scale = Math.min(2, 30000 / height, 30000 / width);
   if (scale < 0.75) {
-    error.textContent = 'Vue trop longue pour une image PNG : exportez en SVG, ou réduisez la vue (zoom, « Structure seule »).';
+    error.textContent = 'Vue trop longue pour une image PNG : exportez moins de lignes, en SVG, ou réduisez la vue (zoom, « Structure seule »).';
     error.hidden = false;
     return;
   }
@@ -1732,6 +1748,16 @@ hoverToggle.addEventListener('change', () => {
   if (!hoverHighlight) highlight(null);
   try { localStorage.setItem('lisigraph.hoverHighlight', hoverHighlight ? '1' : '0'); } catch {}
 });
+
+// Nombre de lignes exportées en image (0 = tout), choix mémorisé dans le navigateur
+let exportRows = 50;
+try { const n = loadPref('exportRows'); if (n != null) exportRows = Number(n) || 0; } catch {}
+function setExportRows(n) {
+  exportRows = n;
+  document.querySelectorAll('#export-rows [data-rows]').forEach(b => b.classList.toggle('on', Number(b.dataset.rows) === n));
+  try { localStorage.setItem('lisigraph.exportRows', String(n)); } catch {}
+}
+setExportRows(exportRows);
 
 const rowsEl = document.getElementById('rows');
 rowsEl.addEventListener('mouseover', e => {
@@ -1774,6 +1800,8 @@ document.addEventListener('click', e => {
   if (t.closest('#fetch-run')) return runFetch();
   if (t.closest('#view-btn')) return toggleMenu('view-menu');
   if (t.closest('#more-merged')) return toggleMenu('merged-menu', fillMergedMenu);
+  const rowsBtn = t.closest('#export-rows [data-rows]');
+  if (rowsBtn) { document.getElementById('export-error').hidden = true; return setExportRows(Number(rowsBtn.dataset.rows)); }
   const exp = t.closest('[data-export]');
   if (exp) { exportImage(exp.dataset.export).then(() => { if (document.getElementById('export-error').hidden) closeMenus(); }); return; }
   const merged = t.closest('#merged-list li[data-b]');
