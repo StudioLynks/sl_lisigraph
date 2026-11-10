@@ -153,6 +153,58 @@ function readDiff(repo, id, filePath, oldPath) {
   return { diff: diff.slice(0, MAX_DIFF), truncated: diff.length > MAX_DIFF };
 }
 
+// État du dossier de travail (git status).
+// --no-optional-locks : git status n'écrit pas son cache dans .git, LisiGraph reste en lecture seule.
+const STATUS_MAX = 1000;
+const READ_ONLY = ['--no-optional-locks', '-c', 'core.quotePath=false'];
+
+function readStatus(repo) {
+  // -z : chemins bruts séparés par \0 ; un renommage donne « XY nouveau\0ancien\0 »
+  const tokens = git(repo, [...READ_ONLY, 'status', '--porcelain=v1', '-z']).split('\0');
+  const files = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+    if (t.length < 4) continue;
+    const file = { x: t[0], y: t[1], path: t.slice(3) };
+    if (file.x === 'R' || file.x === 'C') file.oldPath = tokens[++i];
+    files.push(file);
+  }
+  // Opération interrompue : repérée par les fichiers que Git laisse dans .git
+  const gitDir = git(repo, ['rev-parse', '--absolute-git-dir']).trim();
+  const has = name => fs.existsSync(path.join(gitDir, name));
+  const operation = has('rebase-merge') || has('rebase-apply') ? 'rebase'
+    : has('MERGE_HEAD') ? 'merge'
+    : has('CHERRY_PICK_HEAD') ? 'cherry-pick'
+    : has('REVERT_HEAD') ? 'revert'
+    : has('BISECT_LOG') ? 'bisect' : null;
+  let lastFetch = null;
+  try { lastFetch = fs.statSync(path.join(gitDir, 'FETCH_HEAD')).mtime.toISOString(); } catch {}
+  return { root: repo, operation, lastFetch, total: files.length, files: files.slice(0, STATUS_MAX) };
+}
+
+// Modifications d'un fichier du dossier de travail par rapport au dernier commit (HEAD)
+function readWorkingDiff(repo, filePath, oldPath, untracked) {
+  if (!filePath) throw new Error('Fichier manquant');
+  if (!untracked) {
+    const paths = oldPath && oldPath !== filePath ? [oldPath, filePath] : [filePath];
+    const diff = git(repo, [...READ_ONLY, 'diff', 'HEAD', '-M', '--no-color', '--no-ext-diff', '--', ...paths]);
+    return { diff: diff.slice(0, MAX_DIFF), truncated: diff.length > MAX_DIFF };
+  }
+  // Fichier non suivi : Git n'a rien à comparer, on présente tout le contenu comme ajouté
+  const root = fs.realpathSync(repo);
+  const full = fs.realpathSync(path.resolve(root, filePath));
+  if (!full.startsWith(root + path.sep)) throw new Error('Chemin hors du dépôt');
+  if (fs.statSync(full).isDirectory()) return { dir: true };
+  const fd = fs.openSync(full, 'r');
+  const buf = Buffer.alloc(MAX_DIFF);
+  const size = fs.readSync(fd, buf, 0, MAX_DIFF, 0);
+  fs.closeSync(fd);
+  const content = buf.subarray(0, size);
+  if (content.includes(0)) return { diff: 'Binary files differ' };
+  const lines = content.toString('utf8').replace(/\r?\n$/, '').split(/\r?\n/);
+  return { diff: `@@ -0,0 +1,${lines.length} @@\n${lines.map(l => '+' + l).join('\n')}`, truncated: fs.statSync(full).size > MAX_DIFF };
+}
+
 function sendJson(res, fn, errorLabel) {
   let body;
   try {
@@ -318,6 +370,8 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/api/graph') return sendJson(res, () => readGraph(opts.repo, opts.max), 'Impossible de lire le dépôt');
   if (url.pathname === '/api/commit') return sendJson(res, () => readCommit(opts.repo, q('id')), 'Impossible de lire le commit');
   if (url.pathname === '/api/diff') return sendJson(res, () => readDiff(opts.repo, q('id'), q('path'), q('old')), 'Impossible de lire les modifications');
+  if (url.pathname === '/api/status') return sendJson(res, () => readStatus(opts.repo), "Impossible de lire l'état du dossier");
+  if (url.pathname === '/api/wdiff') return sendJson(res, () => readWorkingDiff(opts.repo, q('path'), q('old'), q('untracked') === '1'), 'Impossible de lire les modifications');
   if (url.pathname === '/' || url.pathname === '/index.html') {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
     return fs.createReadStream(PAGE).pipe(res);

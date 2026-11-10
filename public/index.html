@@ -36,6 +36,9 @@
   .title .head-btn b { font-weight: 600; }
   .title .head-btn .hash { font-size: 12px; }
   .title .head-btn .down { color: var(--p4); font-weight: 700; }
+  .title .wt-btn { color: var(--muted); }
+  .title .wt-btn.dirty { color: var(--p1); border-color: color-mix(in srgb, var(--p1) 50%, transparent); }
+  .title .wt-btn.blocked { color: var(--p4); border-color: color-mix(in srgb, var(--p4) 60%, transparent); font-weight: 600; }
 
   /* Menus de l'en-tête */
   .menu-wrap { position: relative; }
@@ -220,6 +223,9 @@
   .cmp-form select { flex: 1; min-width: 0; padding: 4px 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); font: inherit; }
   .cmp-form .copy { font-size: 14px; padding: 2px 8px; }
   .detail .ok { color: var(--p2); }
+  .detail .warn { color: var(--p4); }
+  .files .st { display: inline-block; width: 16px; margin-right: 4px; text-align: center; font: 600 11px ui-monospace, Consolas, monospace; color: var(--b-primary); }
+  .files .st.A, .files .st.untracked { color: var(--p2); } .files .st.D, .files .st.U { color: var(--p4); }
   .swatch { width: 10px; height: 10px; border-radius: 2px; align-self: center; }
   .swatch.cmp-a { background: var(--p1); } .swatch.cmp-b { background: var(--p5); }
   .row.cmp-a { box-shadow: inset 4px 0 0 var(--p1); }
@@ -244,6 +250,7 @@
     <h1>LisiGraph</h1>
     <span class="menu-wrap"><button class="repo" id="repo" title="Changer de dépôt"></button><div class="menu repo-menu" id="repo-menu" hidden></div></span>
     <button class="head-btn" id="head-btn" hidden></button>
+    <button class="wt-btn" id="wt-btn" hidden></button>
     <span class="search"><input id="search" type="search" placeholder="Rechercher…  ( / )" autocomplete="off" spellcheck="false"><span class="hint" id="search-count"></span></span>
     <span class="actions">
       <span class="menu-wrap"><button id="view-btn" title="Options d'affichage du graphe">Affichage<span class="count" id="view-count"></span> ▾</button><div class="menu view-menu" id="view-menu" hidden>
@@ -802,8 +809,8 @@ function refsData(ids, viewBranches) {
     const head = REFS.head === b.name;
     if (ids.has(b.local)) {
       const synced = b.remote === b.local;
-      const title = [head ? 'Branche courante (HEAD)' : '', synced ? `à jour avec ${REFS.remoteName}` : '', b.ahead ? `${b.ahead} commit(s) non poussé(s)` : '', b.stale ? staleText(b) : ''].filter(Boolean).join(' · ');
-      out.push({ kind: 'local', b, text: b.name, title, head, synced, ahead: b.ahead });
+      const title = [head ? 'Branche courante (HEAD)' : '', synced ? `à jour avec ${REFS.remoteName}` : '', b.ahead ? `${b.ahead} commit(s) non poussé(s)` : '', b.remoteAhead ? `${b.remoteAhead} commit(s) à récupérer` : '', b.stale ? staleText(b) : ''].filter(Boolean).join(' · ');
+      out.push({ kind: 'local', b, text: b.name, title, head, synced, ahead: b.ahead, behind: b.remoteAhead });
     }
     if (ids.has(b.remote) && b.remote !== b.local) {
       out.push({ kind: 'remote', b, text: `${REFS.remoteName}/${b.name}`, title: 'Position sur le serveur' });
@@ -818,7 +825,7 @@ function refsHtml(ids, viewBranches) {
     if (r.kind === 'tag') return `<span class="pill tag">${ICON_TAG}${esc(r.text)}</span>`;
     if (r.kind === 'here') return `<span class="pill here" title="${esc(r.title)}">${r.text}</span>`;
     const kindCls = r.kind === 'local' ? (r.head ? ' head' : '') : ` ${r.kind}`;
-    const extra = r.kind === 'local' ? `${r.synced ? ICON_CLOUD : ''}${r.ahead ? `<span class="ahead">↑${r.ahead}</span>` : ''}` : '';
+    const extra = r.kind === 'local' ? `${r.synced ? ICON_CLOUD : ''}${r.ahead ? `<span class="ahead">↑${r.ahead}</span>` : ''}${r.behind ? `<span class="ahead">↓${r.behind}</span>` : ''}` : '';
     return `<span class="pill${kindCls}" data-b="${r.b.id}" style="--c:var(${r.b.color})" title="${esc(r.title)}">${esc(r.text)}${extra}</span>`;
   }).join('');
 }
@@ -1162,13 +1169,16 @@ async function toggleFileDiff(li) {
     box.innerHTML = '<p class="hint">Chargement…</p>';
     li.after(box);
     li.classList.add('open');
-    const u = new URL('api/diff', location.href);
-    u.searchParams.set('id', selected);
+    const u = new URL(f.working ? 'api/wdiff' : 'api/diff', location.href);
+    if (!f.working) u.searchParams.set('id', selected);
+    if (f.untracked) u.searchParams.set('untracked', '1');
     u.searchParams.set('path', f.path);
     if (f.oldPath) u.searchParams.set('old', f.oldPath);
     let res;
     try { res = await fetch(u).then(readJson); } catch (err) { res = { error: err.message }; }
-    box.innerHTML = res.error ? `<p class="error">${esc(res.error)}</p>` : diffHtml(res.diff, res.truncated);
+    box.innerHTML = res.error ? `<p class="error">${esc(res.error)}</p>`
+      : res.dir ? '<p class="hint">Dossier non suivi : son contenu n\'est pas détaillé.</p>'
+      : diffHtml(res.diff, res.truncated);
   }
   document.body.classList.toggle('detail-wide', !!document.querySelector('.files .diff'));
   queueLaneBar();
@@ -1201,6 +1211,7 @@ function diffHtml(text, truncated) {
 
 function closeDetail() {
   selected = null;
+  workingOpen = false;
   detailRequest++;
   compareState = null;
   applyCompareMarks();
@@ -1344,6 +1355,105 @@ Cliquer pour aller à ce commit`;
 }
 
 // ---------------------------------------------------------------------------
+// État du dossier de travail (git status), chargé à part : il peut être lent sur un lecteur réseau
+// ---------------------------------------------------------------------------
+let workingStatus = null;
+let workingOpen = false;
+const OPERATIONS = {
+  merge: ['Merge en cours', 'terminez-le (git commit) ou annulez-le (git merge --abort)'],
+  rebase: ['Rebase en cours', 'terminez-le (git rebase --continue) ou annulez-le (git rebase --abort)'],
+  'cherry-pick': ['Cherry-pick en cours', 'git cherry-pick --continue ou --abort'],
+  revert: ['Revert en cours', 'git revert --continue ou --abort'],
+  bisect: ['Bisect en cours', 'git bisect reset pour revenir à la normale'],
+};
+const isConflict = f => f.x === 'U' || f.y === 'U' || (f.x === 'A' && f.y === 'A') || (f.x === 'D' && f.y === 'D');
+
+function workingGroups(st) {
+  const conflicts = [], changed = [], untracked = [];
+  for (const f of st.files) {
+    f.working = true;
+    if (f.x === '?') { f.untracked = true; untracked.push(f); }
+    else if (isConflict(f)) conflicts.push(f);
+    else changed.push(f);
+  }
+  return { conflicts, changed, untracked };
+}
+
+async function loadWorkingStatus() {
+  const btn = document.getElementById('wt-btn');
+  if (DATA.demo) return;
+  btn.innerHTML = '<span class="hint">État du dossier…</span>';
+  btn.hidden = false;
+  try { workingStatus = await fetch('api/status').then(readJson); } catch (err) { workingStatus = { error: err.message }; }
+  if (workingStatus.error) {
+    btn.textContent = '⚠ État illisible';
+    btn.title = workingStatus.error;
+    return;
+  }
+  const { conflicts, changed, untracked } = workingGroups(workingStatus);
+  const op = OPERATIONS[workingStatus.operation];
+  const parts = [
+    op ? op[0] : '',
+    conflicts.length ? `${conflicts.length} en conflit` : '',
+    changed.length ? `${changed.length} modifié${changed.length > 1 ? 's' : ''}` : '',
+    untracked.length ? `${untracked.length} non suivi${untracked.length > 1 ? 's' : ''}` : '',
+  ].filter(Boolean);
+  btn.className = 'wt-btn' + (op || conflicts.length ? ' blocked' : parts.length ? ' dirty' : '');
+  btn.textContent = parts.length ? `⚠ ${parts.join(' · ')}` : '✓ Dossier propre';
+  btn.title = parts.length ? 'Modifications non commitées dans le dossier : cliquer pour le détail' : 'Aucune modification en dehors des commits';
+}
+
+function openWorking() {
+  if (!workingStatus || workingStatus.error) return;
+  selected = null;
+  compareState = null;
+  applyCompareMarks();
+  detailRequest++;
+  workingOpen = true;
+  document.querySelectorAll('.row.selected').forEach(r => r.classList.remove('selected'));
+  document.body.classList.add('detail-open');
+  document.body.classList.remove('detail-wide');
+  queueLaneBar();
+
+  const st = workingStatus;
+  const { conflicts, changed, untracked } = workingGroups(st);
+  detailFiles = [...conflicts, ...changed, ...untracked];
+  const op = OPERATIONS[st.operation];
+  const c = byId.get(REFS.headCommit);
+  const where = c ? `${headBranch ? branchPill(headBranch) : '<b>HEAD détaché</b>'}<a class="mono" data-goto="${c.id}">${c.hash}</a>` : '<span class="hint">inconnue</span>';
+  const fetched = st.lastFetch ? `${new Date(st.lastFetch).toLocaleString('fr-FR', { dateStyle: 'long', timeStyle: 'short' })} <span class="hint">(${relDate(new Date(st.lastFetch))})</span>` : '<span class="hint">jamais</span>';
+  const letter = f => f.untracked ? '?' : isConflict(f) ? 'U' : f.x !== ' ' ? f.x : f.y;
+  const NAMES = { M: 'modifié', A: 'ajouté', D: 'supprimé', R: 'renommé', C: 'copié', T: 'type changé', U: 'en conflit', '?': 'non suivi' };
+  const item = f => {
+    const i = detailFiles.indexOf(f), l = letter(f);
+    const slash = f.path.replace(/\/$/, '').lastIndexOf('/');
+    const name = slash < 0 ? esc(f.path) : `<span>${esc(f.path.slice(0, slash + 1))}</span>${esc(f.path.slice(slash + 1))}`;
+    const renamed = f.oldPath ? `<span class="hint renamed">renommé depuis ${esc(f.oldPath)}</span>` : '';
+    const staged = !f.untracked && !isConflict(f) && f.x !== ' ' ? '<span class="hint">indexé</span>' : '';
+    return `<li data-file="${i}" title="Voir les modifications"><span class="path"><span class="chev">▸</span><span class="st ${f.untracked ? 'untracked' : l}" title="${NAMES[l] || l}">${l}</span>${name}${renamed}</span>${staged}</li>`;
+  };
+  const group = (title, list, hint = '') => list.length
+    ? `<h3>${title} (${list.length})</h3>${hint ? `<p class="hint">${hint}</p>` : ''}<ul class="files">${list.map(item).join('')}</ul>` : '';
+  const panel = document.getElementById('detail');
+  panel.hidden = false;
+  panel.innerHTML = `
+    <button class="close" id="detail-close" title="Fermer (Échap)">×</button>
+    <h2>Dossier de travail</h2>
+    <p class="hint mono">${esc(st.root)}</p>
+    <dl>
+      <dt>Position</dt><dd>${where}</dd>
+      ${op ? `<dt>Opération</dt><dd class="warn">${op[0]} : ${op[1]}</dd>` : ''}
+      <dt>Dernier fetch</dt><dd>${fetched}</dd>
+    </dl>
+    <p class="hint">Les flèches ↓ comptent les commits d'${esc(REFS.remoteName)} connus au dernier fetch. Rechargez la page après un git pull ou un git fetch.</p>
+    ${st.total ? '' : '<h3>Modifications</h3><p class="ok">Aucune modification : le dossier correspond exactement au commit.</p>'}
+    ${group('En conflit', conflicts, 'Conflits à résoudre avant de pouvoir continuer.')}
+    ${group('Modifiés', changed, 'Différences avec le dernier commit, pas encore commitées.')}
+    ${group('Non suivis', untracked, 'Fichiers jamais ajoutés à Git.')}
+    ${st.total > st.files.length ? `<p class="hint">… et ${st.total - st.files.length} autres fichiers.</p>` : ''}`;
+}
+
+// ---------------------------------------------------------------------------
 // Recherche : message, auteur ou début du hash, sans tenir compte des accents ni des majuscules
 // ---------------------------------------------------------------------------
 const normalize = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -1458,7 +1568,7 @@ function buildExportSvg() {
     const ids = c.gap ? new Set(c.hidden.map(h => h.id)) : c.squash ? new Set() : new Set([c.id]);
     let right = REFS_W - 8;
     for (const r of refsData(ids, v.branches).reverse()) {
-      const label = r.kind === 'local' && r.ahead ? `${r.text} ↑${r.ahead}` : r.text;
+      const label = r.kind === 'local' ? [r.text, r.ahead ? `↑${r.ahead}` : '', r.behind ? `↓${r.behind}` : ''].filter(Boolean).join(' ') : r.text;
       const w = Math.min(measure(label, F12) + 16, 220);
       const x = right - w;
       if (x < 4) break;
@@ -1605,6 +1715,7 @@ document.addEventListener('click', e => {
   if (t.closest('#detail-close')) return closeDetail();
   if (t.closest('#compare-btn')) return openCompare();
   if (t.closest('#head-btn')) return goToHead();
+  if (t.closest('#wt-btn')) return workingOpen ? closeDetail() : openWorking();
   if (t.closest('#cmp-back')) return openCompare(compareState.a, compareState.b);
   const file = t.closest('.files li[data-file]');
   if (file) return toggleFileDiff(file);
@@ -1635,7 +1746,7 @@ document.addEventListener('keydown', e => {
     return;
   }
   if (typing) return;
-  if (selected || compareState) closeDetail();
+  if (selected || compareState || workingOpen) closeDetail();
   else if (zoom) setZoom(null);
 });
 
@@ -1684,6 +1795,7 @@ document.getElementById('theme').addEventListener('click', () => {
 
 updateViewCount();
 render();
+loadWorkingStatus();
 </script>
 </body>
 </html>
